@@ -8,69 +8,64 @@ interface Tab {
   id: string;
   name: string;
   url: string;
+  icon: string;
 }
 
 const DEFAULT_TABS: Tab[] = [
-  { id: "gemini", name: "Gemini AI", url: "https://gemini.google.com/app" },
-  { id: "advanced", name: "GEMs", url: "https://gemini.google.com/gems/view" },
-  { id: "search", name: "Search", url: "https://gemini.google.com/search" },
+  { id: "gemini", name: "Gemini AI", url: "https://gemini.google.com/app", icon: "💬" },
+  { id: "gems", name: "Gems", url: "https://gemini.google.com/gems/view", icon: "💎" },
+  { id: "notebook", name: "Sổ ghi chú", url: "https://gemini.google.com/notebook", icon: "📓" },
 ];
 
 const SIDEBAR_WIDTH = 72;
+const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
 
 export default function App() {
-  const [tabs, _setTabs] = useState<Tab[]>(DEFAULT_TABS);
+  const [tabs] = useState<Tab[]>(DEFAULT_TABS);
   const [activeTabId, setActiveTabId] = useState<string>("gemini");
   const webviewsRef = useRef<{ [key: string]: Webview }>({});
 
+  // Webviews are created lazily (only when a tab is first opened) instead of all
+  // at startup, so launching the app doesn't spin up several Chromium renderer
+  // processes at once.
+  const ensureWebview = (tab: Tab): Webview => {
+    const existing = webviewsRef.current[tab.id];
+    if (existing) return existing;
+
+    const appWindow = getCurrentWindow();
+    const webview = new Webview(appWindow, tab.id, {
+      url: tab.url,
+      x: SIDEBAR_WIDTH,
+      y: 0,
+      width: window.innerWidth - SIDEBAR_WIDTH,
+      height: window.innerHeight,
+      userAgent: USER_AGENT,
+    });
+    webviewsRef.current[tab.id] = webview;
+
+    webview.once('tauri://error', (e) => {
+      console.error(`Webview error for ${tab.id}:`, e);
+    });
+
+    return webview;
+  };
+
   useEffect(() => {
-    const initWebview = async () => {
-      const appWindow = getCurrentWindow();
-
-      for (const tab of tabs) {
-        if (!webviewsRef.current[tab.id]) {
-          try {
-            const webview = new Webview(appWindow, tab.id, {
-              url: tab.url,
-              x: SIDEBAR_WIDTH,
-              y: 0,
-              width: window.innerWidth - SIDEBAR_WIDTH,
-              height: window.innerHeight,
-              userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
-            });
-            webviewsRef.current[tab.id] = webview;
-
-            webview.once('tauri://created', () => {
-               if (tab.id === activeTabId) {
-                 webview.show();
-               } else {
-                 webview.hide();
-               }
-            });
-            webview.once('tauri://error', (e) => {
-               console.error(`Webview error for ${tab.id}:`, e);
-            });
-          } catch (e: any) {
-            console.error(`Exception creating webview ${tab.id}:`, e);
-          }
-        }
+    const handleResize = () => {
+      for (const id in webviewsRef.current) {
+        webviewsRef.current[id].setSize(new LogicalSize(window.innerWidth - SIDEBAR_WIDTH, window.innerHeight));
       }
-
-      const handleResize = () => {
-        for (const id in webviewsRef.current) {
-           const wv = webviewsRef.current[id];
-           wv.setSize(new LogicalSize(window.innerWidth - SIDEBAR_WIDTH, window.innerHeight));
-        }
-      };
-
-      window.addEventListener("resize", handleResize);
-      return () => window.removeEventListener("resize", handleResize);
     };
-
-    initWebview();
-  }, [tabs]);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   useEffect(() => {
+    const tab = tabs.find(t => t.id === activeTabId);
+    if (!tab) return;
+
+    ensureWebview(tab);
+
     for (const id in webviewsRef.current) {
       if (id === activeTabId) {
         webviewsRef.current[id].show();
@@ -102,13 +97,13 @@ export default function App() {
               key={tab.id}
               onClick={() => setActiveTabId(tab.id)}
               title={tab.name}
-              className={`w-11 h-11 shrink-0 rounded-xl flex items-center justify-center text-sm font-bold transition-all duration-200 cursor-pointer ${
+              className={`w-11 h-11 shrink-0 rounded-xl flex items-center justify-center text-lg transition-all duration-200 cursor-pointer ${
                 activeTabId === tab.id
                   ? "bg-justice-blue text-white shadow-md"
                   : "text-gray-500 hover:bg-gray-100"
               }`}
             >
-              {tab.name.charAt(0)}
+              {tab.icon}
             </button>
           ))}
         </div>
