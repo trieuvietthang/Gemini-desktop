@@ -89,7 +89,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             // Setup Tray Icon
-            let tray = TrayIconBuilder::new()
+            let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
@@ -107,7 +107,6 @@ pub fn run() {
                 .build(app)?;
 
             // Setup Global Shortcut (Ctrl+Shift+Space)
-            let app_handle = app.handle().clone();
             let shortcut = Shortcut::from_str("Ctrl+Shift+Space").unwrap();
             
             // Register shortcut, ignore error if already registered to prevent panic
