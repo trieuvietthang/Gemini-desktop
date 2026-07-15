@@ -8,6 +8,10 @@
     "opener:default",
     "core:webview:default",
     "core:webview:allow-create-webview",
+    "core:webview:allow-webview-hide",
+    "core:webview:allow-webview-show",
+    "core:webview:allow-set-webview-position",
+    "core:webview:allow-set-webview-size",
     "core:window:default",
     "core:tray:default",
     "core:event:default"
