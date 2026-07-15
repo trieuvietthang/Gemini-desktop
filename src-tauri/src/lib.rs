@@ -4,7 +4,7 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
-use tauri::{Manager, Emitter, tray::{TrayIconBuilder, MouseButton, MouseButtonState, TrayIconEvent}};
+use tauri::{Manager, Emitter, WindowEvent, menu::{Menu, MenuItem}, tray::{TrayIconBuilder, MouseButton, MouseButtonState, TrayIconEvent}};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use std::str::FromStr;
 use std::fs;
@@ -109,9 +109,38 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            // Closing the main window destroys it entirely by default, after which the
+            // tray icon has nothing left to show/focus (the app keeps running via the
+            // tray, but the window is gone for good). Hide instead, so the tray icon
+            // can always bring it back.
+            if let Some(main_window) = app.get_webview_window("main") {
+                let main_window_for_close = main_window.clone();
+                main_window.on_window_event(move |event| {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = main_window_for_close.hide();
+                    }
+                });
+            }
+
             // Setup Tray Icon
+            let show_item = MenuItem::with_id(app, "show", "Hiện cửa sổ", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", "Thoát", true, None::<&str>)?;
+            let tray_menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
+                .menu(&tray_menu)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,
