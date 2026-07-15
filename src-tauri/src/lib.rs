@@ -105,10 +105,10 @@ fn toggle_spotlight_window(app: tauri::AppHandle) {
 
 fn restore_main_window(app_handle: &tauri::AppHandle) {
     let Some(window) = app_handle.get_webview_window("main") else {
-        println!("restore_main_window: no 'main' window handle");
+        eprintln!("restore_main_window: no 'main' window handle");
         return;
     };
-    println!(
+    eprintln!(
         "restore_main_window: before visible={:?} minimized={:?} pos={:?}",
         window.is_visible(),
         window.is_minimized(),
@@ -127,7 +127,7 @@ fn restore_main_window(app_handle: &tauri::AppHandle) {
     let _ = window.set_always_on_top(true);
     let _ = window.set_always_on_top(false);
 
-    println!(
+    eprintln!(
         "restore_main_window: after visible={:?} minimized={:?}",
         window.is_visible(),
         window.is_minimized()
@@ -146,18 +146,18 @@ pub fn run() {
             // can always bring it back.
             match app.get_webview_window("main") {
                 Some(main_window) => {
-                    println!("setup: main window found, attaching close handler");
+                    eprintln!("setup: main window found, attaching close handler");
                     let main_window_for_close = main_window.clone();
                     main_window.on_window_event(move |event| {
                         if let WindowEvent::CloseRequested { api, .. } = event {
-                            println!("main window: CloseRequested — preventing close, hiding instead");
+                            eprintln!("main window: CloseRequested — preventing close, hiding instead");
                             api.prevent_close();
                             let _ = main_window_for_close.hide();
                         }
                     });
                 }
                 None => {
-                    println!("setup: main window NOT found — close handler NOT attached");
+                    eprintln!("setup: main window NOT found — close handler NOT attached");
                 }
             }
 
