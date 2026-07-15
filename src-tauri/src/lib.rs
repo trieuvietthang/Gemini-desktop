@@ -104,13 +104,34 @@ fn toggle_spotlight_window(app: tauri::AppHandle) {
 }
 
 fn restore_main_window(app_handle: &tauri::AppHandle) {
-    if let Some(window) = app_handle.get_webview_window("main") {
-        // Defensive: unminimize() is a no-op if the window isn't minimized, but
-        // covers the case where it ended up minimized rather than just hidden.
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
-    }
+    let Some(window) = app_handle.get_webview_window("main") else {
+        println!("restore_main_window: no 'main' window handle");
+        return;
+    };
+    println!(
+        "restore_main_window: before visible={:?} minimized={:?} pos={:?}",
+        window.is_visible(),
+        window.is_minimized(),
+        window.outer_position()
+    );
+
+    // Defensive: unminimize() is a no-op if the window isn't minimized, but
+    // covers the case where it ended up minimized rather than just hidden.
+    let _ = window.unminimize();
+    let _ = window.show();
+    let _ = window.set_focus();
+    // Windows can refuse SetForegroundWindow from a background/tray process
+    // (the "foreground lock" restriction), so the window becomes visible but
+    // stays behind everything else. Briefly toggling always-on-top forces it
+    // to the front regardless.
+    let _ = window.set_always_on_top(true);
+    let _ = window.set_always_on_top(false);
+
+    println!(
+        "restore_main_window: after visible={:?} minimized={:?}",
+        window.is_visible(),
+        window.is_minimized()
+    );
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
