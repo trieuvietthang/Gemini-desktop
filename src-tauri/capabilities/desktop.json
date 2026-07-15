@@ -6,7 +6,8 @@
     "linux"
   ],
   "windows": [
-    "main"
+    "main",
+    "spotlight"
   ],
   "permissions": [
     "global-shortcut:default"

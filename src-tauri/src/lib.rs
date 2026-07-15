@@ -82,6 +82,27 @@ async fn generate_content(app: tauri::AppHandle, prompt: String) -> Result<Strin
         .ok_or_else(|| "Sorry, I could not generate a response.".to_string())
 }
 
+// The spotlight is a separate always-on-top window (see tauri.conf.json) rather
+// than an overlay inside the main window, because the per-tab Webviews are
+// native views stacked above the main window's content and would otherwise
+// cover it.
+fn toggle_spotlight(app_handle: &tauri::AppHandle) {
+    if let Some(spotlight) = app_handle.get_webview_window("spotlight") {
+        if spotlight.is_visible().unwrap_or(false) {
+            let _ = spotlight.hide();
+        } else {
+            let _ = spotlight.show();
+            let _ = spotlight.set_focus();
+            let _ = spotlight.emit("spotlight-shown", ());
+        }
+    }
+}
+
+#[tauri::command]
+fn toggle_spotlight_window(app: tauri::AppHandle) {
+    toggle_spotlight(&app);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -112,11 +133,7 @@ pub fn run() {
             // Register shortcut, ignore error if already registered to prevent panic
             let _ = app.global_shortcut().on_shortcut(shortcut, move |app_handle, _shortcut, event| {
                 if event.state == ShortcutState::Pressed {
-                    if let Some(window) = app_handle.get_webview_window("main") {
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                        let _ = window.emit("toggle-spotlight", ());
-                    }
+                    toggle_spotlight(app_handle);
                 }
             });
 
@@ -126,7 +143,8 @@ pub fn run() {
             greet,
             has_gemini_api_key,
             set_gemini_api_key,
-            generate_content
+            generate_content,
+            toggle_spotlight_window
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

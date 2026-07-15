@@ -12,9 +12,25 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Đông Hà Nội - AI",
         "width": 1280,
         "height": 800
+      },
+      {
+        "label": "spotlight",
+        "title": "Quick Chat",
+        "url": "index.html?spotlight=1",
+        "width": 640,
+        "height": 460,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "shadow": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "center": true,
+        "visible": false
       }
     ],
     "security": {
