@@ -14,7 +14,7 @@ interface Tab {
 const DEFAULT_TABS: Tab[] = [
   { id: "gemini", name: "Gemini AI", url: "https://gemini.google.com/app", icon: "💬" },
   { id: "gems", name: "Gems", url: "https://gemini.google.com/gems/view", icon: "💎" },
-  { id: "notebook", name: "Sổ ghi chú", url: "https://gemini.google.com/notebook", icon: "📓" },
+  { id: "notebook", name: "Sổ ghi chú", url: "https://notebooklm.google.com/", icon: "📓" },
 ];
 
 const SIDEBAR_WIDTH = 72;
