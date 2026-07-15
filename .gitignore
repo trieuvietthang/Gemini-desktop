@@ -17,8 +17,8 @@ dist-ssr
 !.vscode/extensions.json
 .idea
 
-# Claude Code local settings (machine-specific, not project config)
-.claude/settings.local.json
+# Claude Code local session state (machine-specific, not project config)
+.claude/
 .DS_Store
 *.suo
 *.ntvs*
