@@ -51,6 +51,19 @@ export default function App() {
     }
   }, [showSpotlight]);
 
+  // Tab content is rendered as a separate native Webview stacked above the
+  // main window's webview, so it visually covers the spotlight overlay
+  // unless we hide it first.
+  useEffect(() => {
+    const activeWebview = webviewsRef.current[activeTabId];
+    if (!activeWebview) return;
+    if (showSpotlight) {
+      activeWebview.hide();
+    } else {
+      activeWebview.show();
+    }
+  }, [showSpotlight, activeTabId]);
+
   const handleSaveApiKey = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!apiKeyInput.trim()) return;
