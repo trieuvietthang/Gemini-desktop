@@ -131,6 +131,9 @@ pub fn run() {
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&tray_menu)
+                // Without this, Tauri opens the menu on left-click too, so the
+                // custom on_tray_icon_event show/focus handler below never fires.
+                .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => {
                         if let Some(window) = app.get_webview_window("main") {
