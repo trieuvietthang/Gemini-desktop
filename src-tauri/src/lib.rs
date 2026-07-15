@@ -148,11 +148,22 @@ pub fn run() {
                 Some(main_window) => {
                     eprintln!("setup: main window found, attaching close handler");
                     let main_window_for_close = main_window.clone();
+                    let app_handle_for_close = app.handle().clone();
                     main_window.on_window_event(move |event| {
                         if let WindowEvent::CloseRequested { api, .. } = event {
                             eprintln!("main window: CloseRequested — preventing close, hiding instead");
                             api.prevent_close();
-                            let _ = main_window_for_close.hide();
+                            let hide_result = main_window_for_close.hide();
+                            eprintln!("main window: hide() -> {:?}", hide_result);
+                            match app_handle_for_close.get_webview_window("main") {
+                                Some(w) => eprintln!(
+                                    "main window: immediately after hide, still found, visible={:?}",
+                                    w.is_visible()
+                                ),
+                                None => eprintln!(
+                                    "main window: immediately after hide, NOT FOUND anymore"
+                                ),
+                            }
                         }
                     });
                 }
