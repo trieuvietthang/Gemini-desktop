@@ -103,6 +103,16 @@ fn toggle_spotlight_window(app: tauri::AppHandle) {
     toggle_spotlight(&app);
 }
 
+fn restore_main_window(app_handle: &tauri::AppHandle) {
+    if let Some(window) = app_handle.get_webview_window("main") {
+        // Defensive: unminimize() is a no-op if the window isn't minimized, but
+        // covers the case where it ended up minimized rather than just hidden.
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -135,12 +145,7 @@ pub fn run() {
                 // custom on_tray_icon_event show/focus handler below never fires.
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
-                    "show" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    }
+                    "show" => restore_main_window(app),
                     "quit" => app.exit(0),
                     _ => {}
                 })
@@ -150,11 +155,7 @@ pub fn run() {
                         button_state: MouseButtonState::Up,
                         ..
                     } = event {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
+                        restore_main_window(tray.app_handle());
                     }
                 })
                 .build(app)?;

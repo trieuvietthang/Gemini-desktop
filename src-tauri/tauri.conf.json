@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Dong Ha Noi AI",
+  "productName": "Gemini cho PC - TVT",
   "version": "0.1.0",
   "identifier": "com.gemini.desktop",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Đông Hà Nội - AI",
+        "title": "Gemini cho PC - TVT",
         "width": 1280,
         "height": 800
       },
