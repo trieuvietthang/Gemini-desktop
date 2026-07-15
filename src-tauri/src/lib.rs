@@ -144,14 +144,21 @@ pub fn run() {
             // tray icon has nothing left to show/focus (the app keeps running via the
             // tray, but the window is gone for good). Hide instead, so the tray icon
             // can always bring it back.
-            if let Some(main_window) = app.get_webview_window("main") {
-                let main_window_for_close = main_window.clone();
-                main_window.on_window_event(move |event| {
-                    if let WindowEvent::CloseRequested { api, .. } = event {
-                        api.prevent_close();
-                        let _ = main_window_for_close.hide();
-                    }
-                });
+            match app.get_webview_window("main") {
+                Some(main_window) => {
+                    println!("setup: main window found, attaching close handler");
+                    let main_window_for_close = main_window.clone();
+                    main_window.on_window_event(move |event| {
+                        if let WindowEvent::CloseRequested { api, .. } = event {
+                            println!("main window: CloseRequested — preventing close, hiding instead");
+                            api.prevent_close();
+                            let _ = main_window_for_close.hide();
+                        }
+                    });
+                }
+                None => {
+                    println!("setup: main window NOT found — close handler NOT attached");
+                }
             }
 
             // Setup Tray Icon
