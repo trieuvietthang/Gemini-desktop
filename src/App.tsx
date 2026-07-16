@@ -15,6 +15,7 @@ const TABS: Tab[] = [
   { id: "gemini", name: "Gemini", url: "https://gemini.google.com/app", icon: "💬" },
   { id: "notebook", name: "Sổ ghi chú", url: "https://notebooklm.google.com/", icon: "📓" },
   { id: "docs", name: "Google Docs", url: "https://docs.google.com/document/u/0/", icon: "📄" },
+  { id: "aistudio", name: "AI Studio", url: "https://aistudio.google.com/", icon: "🧪" },
 ];
 
 const EXPANDED_WIDTH = 72;
