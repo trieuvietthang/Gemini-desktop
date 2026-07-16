@@ -1,7 +1,10 @@
 {
-  "name": "tauri-app",
+  "name": "gemini-cho-pc-tvt",
   "private": true,
   "version": "0.1.0",
+  "description": "Gemini cho PC - TVT: ứng dụng desktop tích hợp Gemini, NotebookLM, Google Docs và AI Studio",
+  "author": "Thang.TV <trieuvietthang@gmail.com>",
+  "license": "UNLICENSED",
   "type": "module",
   "scripts": {
     "dev": "vite",

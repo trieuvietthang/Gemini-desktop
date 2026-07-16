@@ -3,6 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Webview } from "@tauri-apps/api/webview";
 import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 interface Tab {
   id: string;
@@ -101,6 +102,19 @@ export default function App() {
   useEffect(() => {
     return () => {
       if (collapseTimerRef.current) window.clearTimeout(collapseTimerRef.current);
+    };
+  }, []);
+
+  // Lets Quick Chat's "Mở trong AI Studio" button jump the main window
+  // straight to that tab.
+  useEffect(() => {
+    const unlisten = listen<string>("switch-tab", (event) => {
+      if (TABS.some(t => t.id === event.payload)) {
+        setActiveTabId(event.payload);
+      }
+    });
+    return () => {
+      unlisten.then(f => f());
     };
   }, []);
 

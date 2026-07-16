@@ -18,6 +18,9 @@ interface Message {
 
 interface AppSettings {
   spotlight_opacity: number;
+  gemini_model: string;
+  gemini_temperature: number;
+  system_instruction: string;
 }
 
 const QUICK_ACTIONS = [
@@ -38,6 +41,9 @@ export default function Spotlight() {
   const [isCapturing, setIsCapturing] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [opacity, setOpacity] = useState(0.9);
+  const [showCode, setShowCode] = useState(false);
+  const [codeSnippet, setCodeSnippet] = useState("");
+  const [codeCopied, setCodeCopied] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -169,6 +175,63 @@ export default function Spotlight() {
     setClipboardQuickActions(false);
   };
 
+  // AI Studio has no import API to hand off a live conversation, so the best
+  // we can do is put it on the clipboard for the user to paste in themselves,
+  // then bring the main window to the AI Studio tab.
+  const openInAiStudio = async () => {
+    if (messages.length > 0) {
+      const text = messages.map((m) => `${m.role === "user" ? "Bạn" : "Gemini"}: ${m.text}`).join("\n\n");
+      await invoke("write_clipboard_text", { text }).catch((err) => console.error("Failed to copy conversation:", err));
+    }
+    await invoke("open_in_ai_studio").catch((err) => console.error("Failed to open AI Studio:", err));
+    getCurrentWindow().hide();
+  };
+
+  // Mirrors exactly what generate_content sends server-side, so it's a
+  // faithful "get code" snippet rather than a generic template.
+  const openGetCode = async () => {
+    try {
+      const settings = await invoke<AppSettings>("get_settings");
+      const contents = messages
+        .map((m) => {
+          const parts = [`{"text": ${JSON.stringify(m.text)}}`];
+          for (const a of m.attachments || []) {
+            parts.push(`{"inline_data": {"mime_type": "${a.mime_type}", "data": "<base64 data...>"}}`);
+          }
+          return `    {"role": "${m.role}", "parts": [${parts.join(", ")}]}`;
+        })
+        .join(",\n");
+
+      const systemInstructionLine = settings.system_instruction.trim()
+        ? `  "systemInstruction": {"parts": [{"text": ${JSON.stringify(settings.system_instruction)}}]},\n`
+        : "";
+
+      const snippet = `curl "https://generativelanguage.googleapis.com/v1beta/models/${settings.gemini_model}:generateContent" \\
+  -H "Content-Type: application/json" \\
+  -H "X-goog-api-key: YOUR_API_KEY" \\
+  -d '{
+${systemInstructionLine}  "generationConfig": {"temperature": ${settings.gemini_temperature}},
+  "contents": [
+${contents || "    // (chưa có tin nhắn nào)"}
+  ]
+}'`;
+      setCodeSnippet(snippet);
+      setCodeCopied(false);
+      setShowCode(true);
+    } catch (err) {
+      console.error("Failed to build code snippet:", err);
+    }
+  };
+
+  const copyCodeSnippet = () => {
+    invoke("write_clipboard_text", { text: codeSnippet })
+      .then(() => {
+        setCodeCopied(true);
+        setTimeout(() => setCodeCopied(false), 1500);
+      })
+      .catch(console.error);
+  };
+
   const captureScreenshot = async () => {
     setIsCapturing(true);
     let stream: MediaStream | null = null;
@@ -211,7 +274,7 @@ export default function Spotlight() {
           backdropFilter: "blur(24px)",
           WebkitBackdropFilter: "blur(24px)",
         }}
-        className="w-full h-full rounded-2xl shadow-[0_12px_40px_rgba(0,0,0,0.3)] overflow-hidden flex flex-col border border-white/40"
+        className="relative w-full h-full rounded-2xl shadow-[0_12px_40px_rgba(0,0,0,0.3)] overflow-hidden flex flex-col border border-white/40"
       >
         {apiKeyConfigured === false ? (
           <form onSubmit={handleSaveApiKey} className="p-6 flex flex-col gap-3">
@@ -239,15 +302,60 @@ export default function Spotlight() {
           <>
             <div className="p-3 border-b border-white/40 flex items-center justify-between">
               <span className="text-justice-blue font-bold px-1">✨ Quick Chat</span>
-              <button
-                type="button"
-                onClick={handleNewChat}
-                title="Cuộc trò chuyện mới"
-                className="text-gray-400 hover:text-gray-600 cursor-pointer p-1.5 rounded-lg hover:bg-gray-100 text-sm"
-              >
-                🔄
-              </button>
+              <div className="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  onClick={openGetCode}
+                  title="Xem code gọi API"
+                  className="text-gray-400 hover:text-gray-600 cursor-pointer p-1.5 rounded-lg hover:bg-gray-100 text-sm font-mono"
+                >
+                  {"</>"}
+                </button>
+                <button
+                  type="button"
+                  onClick={openInAiStudio}
+                  title="Mở trong AI Studio (sao chép hội thoại vào clipboard)"
+                  className="text-gray-400 hover:text-gray-600 cursor-pointer p-1.5 rounded-lg hover:bg-gray-100 text-sm"
+                >
+                  🧪
+                </button>
+                <button
+                  type="button"
+                  onClick={handleNewChat}
+                  title="Cuộc trò chuyện mới"
+                  className="text-gray-400 hover:text-gray-600 cursor-pointer p-1.5 rounded-lg hover:bg-gray-100 text-sm"
+                >
+                  🔄
+                </button>
+              </div>
             </div>
+
+            {showCode && (
+              <div className="absolute inset-3 bg-gray-900/95 rounded-2xl z-10 flex flex-col p-4 text-gray-100">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-bold">Code gọi API (cURL)</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={copyCodeSnippet}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-colors cursor-pointer"
+                    >
+                      {codeCopied ? "Đã sao chép ✓" : "Sao chép"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowCode(false)}
+                      className="text-gray-400 hover:text-white cursor-pointer p-1"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+                <pre className="flex-1 overflow-auto text-xs font-mono whitespace-pre-wrap leading-relaxed">
+                  {codeSnippet}
+                </pre>
+              </div>
+            )}
 
             {(messages.length > 0 || isGenerating) && (
               <div ref={scrollRef} className="overflow-y-auto bg-gray-50 flex-1 p-4 flex flex-col gap-3">

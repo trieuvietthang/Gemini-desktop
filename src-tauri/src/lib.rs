@@ -257,6 +257,25 @@ fn read_clipboard_text() -> Result<String, String> {
     clipboard.get_text().map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn write_clipboard_text(text: String) -> Result<(), String> {
+    let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
+    clipboard.set_text(text).map_err(|e| e.to_string())
+}
+
+// Quick Chat's "Mở trong AI Studio" button: bring the main window to front
+// and switch it to the AI Studio tab. There's no way to hand off the actual
+// conversation to AI Studio's own session (different product, no import
+// API), so the caller copies the conversation to the clipboard first and the
+// user pastes it in themselves.
+#[tauri::command]
+fn open_in_ai_studio(app: tauri::AppHandle) {
+    restore_main_window(&app);
+    if let Some(main_window) = app.get_webview_window("main") {
+        let _ = main_window.emit("switch-tab", "aistudio");
+    }
+}
+
 fn guess_mime_type(path: &str) -> &'static str {
     let lower = path.to_lowercase();
     if lower.ends_with(".png") {
@@ -538,6 +557,8 @@ pub fn run() {
             toggle_settings_window,
             hide_settings_window,
             read_clipboard_text,
+            write_clipboard_text,
+            open_in_ai_studio,
             read_file_as_attachment,
             get_settings,
             update_shortcut,

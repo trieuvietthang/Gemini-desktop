@@ -320,6 +320,23 @@ export default function Settings() {
             )}
           </div>
         </section>
+
+        <section>
+          <h2 className="text-xs font-bold uppercase text-gray-400 mb-1">Giới thiệu</h2>
+          <div className="py-2 text-sm text-gray-600 space-y-1">
+            <div className="font-medium text-gray-800">Gemini cho PC - TVT</div>
+            <div className="text-xs text-gray-400">Phiên bản 0.1.0</div>
+            <div className="text-xs text-gray-400 pt-2">
+              Phát triển bởi Thang.TV<br />
+              trieuvietthang@gmail.com
+            </div>
+            <div className="text-xs text-gray-400 pt-2 leading-relaxed">
+              © 2026 Văn phòng Thi hành án dân sự Đông Hà Nội.<br />
+              Số 5 Đường Núi Đôi, xã Sóc Sơn, Hà Nội.<br />
+              Bảo lưu mọi quyền — phần mềm nội bộ, không phải mã nguồn mở.
+            </div>
+          </div>
+        </section>
       </div>
 
       <div className="px-5 py-3 border-t border-gray-100 flex justify-end">
