@@ -44,6 +44,15 @@
         "resizable": false,
         "center": true,
         "visible": false
+      },
+      {
+        "label": "help",
+        "title": "Trợ giúp - THADS Đông Hà Nội",
+        "url": "index.html?help=1",
+        "width": 560,
+        "height": 680,
+        "center": true,
+        "visible": false
       }
     ],
     "security": {

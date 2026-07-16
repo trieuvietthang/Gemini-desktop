@@ -46,6 +46,7 @@ export default function Spotlight() {
   const [codeCopied, setCodeCopied] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -62,7 +63,7 @@ export default function Spotlight() {
 
     const unlistenShown = listen("spotlight-shown", () => {
       setClipboardQuickActions(false);
-      setTimeout(() => inputRef.current?.focus(), 50);
+      setTimeout(() => (textareaRef.current || inputRef.current)?.focus(), 50);
     });
 
     const unlistenSettings = listen<AppSettings>("settings-changed", (event) => {
@@ -72,7 +73,7 @@ export default function Spotlight() {
     const unlistenClipboard = listen<string>("clipboard-capture", (event) => {
       setQuery(event.payload);
       setClipboardQuickActions(true);
-      setTimeout(() => inputRef.current?.focus(), 50);
+      setTimeout(() => (textareaRef.current || inputRef.current)?.focus(), 50);
     });
 
     // Spotlight-style UX: clicking away hides the window instead of leaving it orphaned.
@@ -116,6 +117,15 @@ export default function Spotlight() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages, isGenerating]);
+
+  // Auto-grow the prompt box vertically instead of scrolling long text
+  // sideways, capped so it doesn't take over the whole window.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [query]);
 
   const handleSaveApiKey = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -162,6 +172,17 @@ export default function Spotlight() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     sendMessage(query, pendingAttachments);
+  };
+
+  // Enter sends, Shift+Enter inserts a newline — same convention as most
+  // modern chat inputs.
+  const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      if (!isGenerating && (query.trim() || pendingAttachments.length > 0)) {
+        sendMessage(query, pendingAttachments);
+      }
+    }
   };
 
   const handleQuickAction = (instruction: string) => {
@@ -301,7 +322,13 @@ ${contents || "    // (chưa có tin nhắn nào)"}
         ) : (
           <>
             <div className="p-3 border-b border-white/40 flex items-center justify-between">
-              <span className="text-justice-blue font-bold px-1">✨ Quick Chat</span>
+              <div className="flex items-center gap-2 px-1">
+                <img src="/logo-small.png" alt="THADS Đông Hà Nội" className="w-7 h-7 rounded-full object-contain shrink-0" />
+                <div className="leading-tight">
+                  <div className="text-justice-blue font-bold text-sm">✨ Quick Chat</div>
+                  <div className="text-[10px] text-gray-400">THADS Đông Hà Nội</div>
+                </div>
+              </div>
               <div className="flex items-center gap-0.5">
                 <button
                   type="button"
@@ -428,7 +455,7 @@ ${contents || "    // (chưa có tin nhắn nào)"}
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="p-3 flex items-center gap-2">
+            <form onSubmit={handleSubmit} className="p-3 flex items-end gap-2">
               <button
                 type="button"
                 onClick={captureScreenshot}
@@ -438,13 +465,14 @@ ${contents || "    // (chưa có tin nhắn nào)"}
               >
                 {isCapturing ? "⏳" : "📷"}
               </button>
-              <input
-                ref={inputRef}
-                type="text"
+              <textarea
+                ref={textareaRef}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder={isDragOver ? "Thả file vào đây..." : "Hỏi Gemini bất cứ điều gì..."}
-                className={`flex-1 bg-gray-50 rounded-xl px-3 py-2 outline-none text-gray-800 placeholder-gray-400 border ${
+                onKeyDown={handleTextareaKeyDown}
+                placeholder={isDragOver ? "Thả file vào đây..." : "Hỏi Gemini bất cứ điều gì... (Shift+Enter xuống dòng)"}
+                rows={1}
+                className={`flex-1 bg-gray-50 rounded-xl px-3 py-2 outline-none text-gray-800 placeholder-gray-400 border resize-none leading-relaxed max-h-40 overflow-y-auto ${
                   isDragOver ? "border-justice-blue" : "border-transparent"
                 }`}
               />

@@ -181,7 +181,7 @@ export default function Settings() {
   return (
     <div className="w-screen h-screen bg-white flex flex-col overflow-hidden">
       <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2.5">
-        <img src="/logo.png" alt="THADS Đông Hà Nội" className="w-7 h-7 rounded-full object-contain shrink-0" />
+        <img src="/logo-small.png" alt="THADS Đông Hà Nội" className="w-7 h-7 rounded-full object-contain shrink-0" />
         <h1 className="text-justice-blue font-bold text-lg">Cài đặt</h1>
       </div>
 
@@ -326,7 +326,7 @@ export default function Settings() {
           <h2 className="text-xs font-bold uppercase text-gray-400 mb-1">Giới thiệu</h2>
           <div className="py-2 text-sm text-gray-600 space-y-1">
             <div className="flex items-center gap-3 pb-1">
-              <img src="/logo.png" alt="THADS Đông Hà Nội" className="w-12 h-12 rounded-full object-contain shrink-0" />
+              <img src="/logo-small.png" alt="THADS Đông Hà Nội" className="w-12 h-12 rounded-full object-contain shrink-0" />
               <div>
                 <div className="font-medium text-gray-800">THADS Đông Hà Nội - Trợ lý AI</div>
                 <div className="text-xs text-gray-400">Phiên bản 0.1.0</div>

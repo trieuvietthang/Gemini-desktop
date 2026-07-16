@@ -270,14 +270,10 @@ fn write_clipboard_text(text: String) -> Result<(), String> {
 // user pastes it in themselves.
 #[tauri::command]
 fn open_in_ai_studio(app: tauri::AppHandle) {
-    restore_main_window(&app);
-    match app.get_webview_window("main") {
-        Some(main_window) => {
-            let result = main_window.emit_to("main", "switch-tab", "aistudio");
-            eprintln!("open_in_ai_studio: emit switch-tab -> {:?}", result);
-        }
-        None => eprintln!("open_in_ai_studio: main window not found"),
-    }
+    with_main_window(&app, |window| {
+        let result = window.emit_to("main", "switch-tab", "aistudio");
+        eprintln!("open_in_ai_studio: emit switch-tab -> {:?}", result);
+    });
 }
 
 fn guess_mime_type(path: &str) -> &'static str {
@@ -311,16 +307,22 @@ fn read_file_as_attachment(path: String) -> Result<Attachment, String> {
 // than an overlay inside the main window, because the per-tab Webviews are
 // native views stacked above the main window's content and would otherwise
 // cover it.
+//
+// Dispatched via run_on_main_thread for the same reason as with_main_window
+// below — window lookups from a non-main-thread command can be unreliable.
 fn toggle_spotlight(app_handle: &tauri::AppHandle) {
-    if let Some(spotlight) = app_handle.get_webview_window("spotlight") {
-        if spotlight.is_visible().unwrap_or(false) {
-            let _ = spotlight.hide();
-        } else {
-            let _ = spotlight.show();
-            let _ = spotlight.set_focus();
-            let _ = spotlight.emit("spotlight-shown", ());
+    let handle = app_handle.clone();
+    let _ = app_handle.run_on_main_thread(move || {
+        if let Some(spotlight) = handle.get_webview_window("spotlight") {
+            if spotlight.is_visible().unwrap_or(false) {
+                let _ = spotlight.hide();
+            } else {
+                let _ = spotlight.show();
+                let _ = spotlight.set_focus();
+                let _ = spotlight.emit("spotlight-shown", ());
+            }
         }
-    }
+    });
 }
 
 #[tauri::command]
@@ -336,40 +338,44 @@ fn open_spotlight_with_clipboard(app_handle: &tauri::AppHandle) {
         .and_then(|mut c| c.get_text())
         .unwrap_or_default();
 
-    if let Some(spotlight) = app_handle.get_webview_window("spotlight") {
-        let _ = spotlight.show();
-        let _ = spotlight.set_focus();
-        let _ = spotlight.emit("clipboard-capture", text);
-    }
+    let handle = app_handle.clone();
+    let _ = app_handle.run_on_main_thread(move || {
+        if let Some(spotlight) = handle.get_webview_window("spotlight") {
+            let _ = spotlight.show();
+            let _ = spotlight.set_focus();
+            let _ = spotlight.emit("clipboard-capture", text);
+        }
+    });
 }
 
 // Settings has real window decorations (title bar, native X). Its
 // CloseRequested is intercepted in setup() (hide instead of destroy) — unlike
 // the main window, Settings has no child Webviews attached, so hide() is
 // expected to behave normally here rather than hitting the destroy-on-hide
-// issue main window has. The rebuild fallback below is a last resort only;
-// rebuilding a window from a tray-menu callback was observed to hang the
-// whole app's event loop, so avoid ever reaching it in normal operation.
+// issue main window has. The rebuild fallback below is a last resort only.
 fn toggle_settings(app_handle: &tauri::AppHandle) {
-    if let Some(settings) = app_handle.get_webview_window("settings") {
-        if settings.is_visible().unwrap_or(false) {
-            let _ = settings.hide();
-        } else {
-            focus_window(&settings);
+    let handle = app_handle.clone();
+    let _ = app_handle.run_on_main_thread(move || {
+        if let Some(settings) = handle.get_webview_window("settings") {
+            if settings.is_visible().unwrap_or(false) {
+                let _ = settings.hide();
+            } else {
+                focus_window(&settings);
+            }
+            return;
         }
-        return;
-    }
 
-    match WebviewWindowBuilder::new(app_handle, "settings", WebviewUrl::App("index.html?settings=1".into()))
-        .title("Cài đặt - THADS Đông Hà Nội")
-        .inner_size(480.0, 700.0)
-        .resizable(false)
-        .center()
-        .build()
-    {
-        Ok(window) => focus_window(&window),
-        Err(e) => eprintln!("toggle_settings: failed to rebuild settings window: {e}"),
-    }
+        match WebviewWindowBuilder::new(&handle, "settings", WebviewUrl::App("index.html?settings=1".into()))
+            .title("Cài đặt - THADS Đông Hà Nội")
+            .inner_size(480.0, 700.0)
+            .resizable(false)
+            .center()
+            .build()
+        {
+            Ok(window) => focus_window(&window),
+            Err(e) => eprintln!("toggle_settings: failed to rebuild settings window: {e}"),
+        }
+    });
 }
 
 #[tauri::command]
@@ -382,9 +388,51 @@ fn toggle_settings_window(app: tauri::AppHandle) {
 // frontend call a no-op for this particular window.
 #[tauri::command]
 fn hide_settings_window(app: tauri::AppHandle) {
-    if let Some(settings) = app.get_webview_window("settings") {
-        let _ = settings.hide();
-    }
+    let _ = app.clone().run_on_main_thread(move || {
+        if let Some(settings) = app.get_webview_window("settings") {
+            let _ = settings.hide();
+        }
+    });
+}
+
+// Same pattern as Settings: real decorations, X intercepted to hide instead
+// of destroy, no child Webviews so hide() is safe.
+fn toggle_help(app_handle: &tauri::AppHandle) {
+    let handle = app_handle.clone();
+    let _ = app_handle.run_on_main_thread(move || {
+        if let Some(help) = handle.get_webview_window("help") {
+            if help.is_visible().unwrap_or(false) {
+                let _ = help.hide();
+            } else {
+                focus_window(&help);
+            }
+            return;
+        }
+
+        match WebviewWindowBuilder::new(&handle, "help", WebviewUrl::App("index.html?help=1".into()))
+            .title("Trợ giúp - THADS Đông Hà Nội")
+            .inner_size(560.0, 680.0)
+            .center()
+            .build()
+        {
+            Ok(window) => focus_window(&window),
+            Err(e) => eprintln!("toggle_help: failed to rebuild help window: {e}"),
+        }
+    });
+}
+
+#[tauri::command]
+fn toggle_help_window(app: tauri::AppHandle) {
+    toggle_help(&app);
+}
+
+#[tauri::command]
+fn hide_help_window(app: tauri::AppHandle) {
+    let _ = app.clone().run_on_main_thread(move || {
+        if let Some(help) = app.get_webview_window("help") {
+            let _ = help.hide();
+        }
+    });
 }
 
 // Both used at startup (with the saved/default combo) and from the Settings
@@ -467,21 +515,45 @@ fn focus_window(window: &tauri::WebviewWindow) {
 // multiwebview feature) on the window. So closing is left as a real close,
 // and restoring means rebuilding the window from scratch if it's gone rather
 // than relying on hide()/show().
-fn restore_main_window(app_handle: &tauri::AppHandle) {
-    if let Some(window) = app_handle.get_webview_window("main") {
+//
+// Window lookup/creation must happen on the main thread — Tauri commands
+// that aren't `async` run on a background thread pool by default, and
+// calling get_webview_window()/WebviewWindowBuilder::build() off the main
+// thread was observed to give inconsistent results (a window that visibly
+// exists reported as not-found, then its rebuild failing because it
+// "already exists"). run_on_main_thread() dispatches the whole lookup+
+// create+use sequence onto the correct thread as one unit.
+fn with_main_window<F>(app_handle: &tauri::AppHandle, then: F)
+where
+    F: FnOnce(&tauri::WebviewWindow) + Send + 'static,
+{
+    let handle = app_handle.clone();
+    let result = app_handle.run_on_main_thread(move || {
+        let window = match handle.get_webview_window("main") {
+            Some(w) => w,
+            None => match WebviewWindowBuilder::new(&handle, "main", WebviewUrl::App("index.html".into()))
+                .title("THADS Đông Hà Nội - Trợ lý AI")
+                .inner_size(1280.0, 800.0)
+                .maximized(true)
+                .build()
+            {
+                Ok(w) => w,
+                Err(e) => {
+                    eprintln!("with_main_window: failed to rebuild main window: {e}");
+                    return;
+                }
+            },
+        };
         focus_window(&window);
-        return;
+        then(&window);
+    });
+    if let Err(e) = result {
+        eprintln!("with_main_window: run_on_main_thread failed: {e}");
     }
+}
 
-    match WebviewWindowBuilder::new(app_handle, "main", WebviewUrl::App("index.html".into()))
-        .title("THADS Đông Hà Nội - Trợ lý AI")
-        .inner_size(1280.0, 800.0)
-        .maximized(true)
-        .build()
-    {
-        Ok(window) => focus_window(&window),
-        Err(e) => eprintln!("restore_main_window: failed to rebuild main window: {e}"),
-    }
+fn restore_main_window(app_handle: &tauri::AppHandle) {
+    with_main_window(app_handle, |_window| {});
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -509,12 +581,22 @@ pub fn run() {
                     }
                 });
             }
+            if let Some(help_window) = app.get_webview_window("help") {
+                let help_window_for_close = help_window.clone();
+                help_window.on_window_event(move |event| {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = help_window_for_close.hide();
+                    }
+                });
+            }
 
             // Setup Tray Icon
             let show_item = MenuItem::with_id(app, "show", "Hiện cửa sổ", true, None::<&str>)?;
             let settings_item = MenuItem::with_id(app, "settings", "Cài đặt", true, None::<&str>)?;
+            let help_item = MenuItem::with_id(app, "help", "Trợ giúp", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Thoát", true, None::<&str>)?;
-            let tray_menu = Menu::with_items(app, &[&show_item, &settings_item, &quit_item])?;
+            let tray_menu = Menu::with_items(app, &[&show_item, &settings_item, &help_item, &quit_item])?;
 
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
@@ -525,6 +607,7 @@ pub fn run() {
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => restore_main_window(app),
                     "settings" => toggle_settings(app),
+                    "help" => toggle_help(app),
                     "quit" => app.exit(0),
                     _ => {}
                 })
@@ -560,6 +643,8 @@ pub fn run() {
             toggle_spotlight_window,
             toggle_settings_window,
             hide_settings_window,
+            toggle_help_window,
+            hide_help_window,
             read_clipboard_text,
             write_clipboard_text,
             open_in_ai_studio,

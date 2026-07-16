@@ -145,6 +145,10 @@ export default function App() {
     invoke("toggle_settings_window").catch(err => console.error("Failed to open Settings:", err));
   };
 
+  const openHelp = () => {
+    invoke("toggle_help_window").catch(err => console.error("Failed to open Help:", err));
+  };
+
   return (
     <div className="flex h-screen bg-transparent overflow-hidden relative">
       <div
@@ -156,7 +160,7 @@ export default function App() {
         {sidebarExpanded ? (
           <div className="flex flex-col items-center gap-2 w-full h-full">
             <img
-              src="/logo.png"
+              src="/logo-small.png"
               alt="THADS Đông Hà Nội"
               title="THADS Đông Hà Nội - Trợ lý AI"
               className="w-10 h-10 rounded-full object-contain shrink-0 mb-2"
@@ -180,6 +184,14 @@ export default function App() {
             </div>
 
             <div className="flex-1" />
+
+            <button
+              onClick={openHelp}
+              title="Trợ giúp"
+              className="w-11 h-11 shrink-0 flex items-center justify-center rounded-xl text-gray-500 hover:bg-gray-100 transition-colors cursor-pointer"
+            >
+              ❓
+            </button>
 
             <button
               onClick={openSettings}
