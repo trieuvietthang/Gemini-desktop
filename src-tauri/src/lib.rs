@@ -4,7 +4,7 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
-use tauri::{Manager, Emitter, WindowEvent, menu::{Menu, MenuItem}, tray::{TrayIconBuilder, MouseButton, MouseButtonState, TrayIconEvent}};
+use tauri::{Manager, Emitter, WebviewWindowBuilder, WebviewUrl, menu::{Menu, MenuItem}, tray::{TrayIconBuilder, MouseButton, MouseButtonState, TrayIconEvent}};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use std::str::FromStr;
 use std::fs;
@@ -103,20 +103,7 @@ fn toggle_spotlight_window(app: tauri::AppHandle) {
     toggle_spotlight(&app);
 }
 
-fn restore_main_window(app_handle: &tauri::AppHandle) {
-    let Some(window) = app_handle.get_webview_window("main") else {
-        eprintln!("restore_main_window: no 'main' window handle");
-        return;
-    };
-    eprintln!(
-        "restore_main_window: before visible={:?} minimized={:?} pos={:?}",
-        window.is_visible(),
-        window.is_minimized(),
-        window.outer_position()
-    );
-
-    // Defensive: unminimize() is a no-op if the window isn't minimized, but
-    // covers the case where it ended up minimized rather than just hidden.
+fn focus_window(window: &tauri::WebviewWindow) {
     let _ = window.unminimize();
     let _ = window.show();
     let _ = window.set_focus();
@@ -126,12 +113,28 @@ fn restore_main_window(app_handle: &tauri::AppHandle) {
     // to the front regardless.
     let _ = window.set_always_on_top(true);
     let _ = window.set_always_on_top(false);
+}
 
-    eprintln!(
-        "restore_main_window: after visible={:?} minimized={:?}",
-        window.is_visible(),
-        window.is_minimized()
-    );
+// Closing the main window (X button) destroys it rather than just hiding it —
+// calling .hide() on it turned out to destroy it too, immediately, which
+// appears to be a limitation of hosting child Webviews (the "unstable"
+// multiwebview feature) on the window. So closing is left as a real close,
+// and restoring means rebuilding the window from scratch if it's gone rather
+// than relying on hide()/show().
+fn restore_main_window(app_handle: &tauri::AppHandle) {
+    if let Some(window) = app_handle.get_webview_window("main") {
+        focus_window(&window);
+        return;
+    }
+
+    match WebviewWindowBuilder::new(app_handle, "main", WebviewUrl::App("index.html".into()))
+        .title("Gemini cho PC - TVT")
+        .inner_size(1280.0, 800.0)
+        .build()
+    {
+        Ok(window) => focus_window(&window),
+        Err(e) => eprintln!("restore_main_window: failed to rebuild main window: {e}"),
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -140,38 +143,6 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            // Closing the main window destroys it entirely by default, after which the
-            // tray icon has nothing left to show/focus (the app keeps running via the
-            // tray, but the window is gone for good). Hide instead, so the tray icon
-            // can always bring it back.
-            match app.get_webview_window("main") {
-                Some(main_window) => {
-                    eprintln!("setup: main window found, attaching close handler");
-                    let main_window_for_close = main_window.clone();
-                    let app_handle_for_close = app.handle().clone();
-                    main_window.on_window_event(move |event| {
-                        if let WindowEvent::CloseRequested { api, .. } = event {
-                            eprintln!("main window: CloseRequested — preventing close, hiding instead");
-                            api.prevent_close();
-                            let hide_result = main_window_for_close.hide();
-                            eprintln!("main window: hide() -> {:?}", hide_result);
-                            match app_handle_for_close.get_webview_window("main") {
-                                Some(w) => eprintln!(
-                                    "main window: immediately after hide, still found, visible={:?}",
-                                    w.is_visible()
-                                ),
-                                None => eprintln!(
-                                    "main window: immediately after hide, NOT FOUND anymore"
-                                ),
-                            }
-                        }
-                    });
-                }
-                None => {
-                    eprintln!("setup: main window NOT found — close handler NOT attached");
-                }
-            }
-
             // Setup Tray Icon
             let show_item = MenuItem::with_id(app, "show", "Hiện cửa sổ", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Thoát", true, None::<&str>)?;
