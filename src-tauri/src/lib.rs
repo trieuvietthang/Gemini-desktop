@@ -63,11 +63,20 @@ fn clear_gemini_api_key(app: tauri::AppHandle) -> Result<(), String> {
 
 const DEFAULT_SPOTLIGHT_SHORTCUT: &str = "Ctrl+Shift+Space";
 const DEFAULT_CLIPBOARD_SHORTCUT: &str = "Ctrl+Alt+C";
+const DEFAULT_SPOTLIGHT_OPACITY: f32 = 0.9;
+
+fn default_spotlight_opacity() -> f32 {
+    DEFAULT_SPOTLIGHT_OPACITY
+}
 
 #[derive(Serialize, Deserialize, Clone)]
 struct AppSettings {
     spotlight_shortcut: String,
     clipboard_shortcut: String,
+    // `serde(default...)` so settings.json files saved before this field
+    // existed still load instead of falling back to *all* defaults.
+    #[serde(default = "default_spotlight_opacity")]
+    spotlight_opacity: f32,
 }
 
 impl Default for AppSettings {
@@ -75,6 +84,7 @@ impl Default for AppSettings {
         Self {
             spotlight_shortcut: DEFAULT_SPOTLIGHT_SHORTCUT.to_string(),
             clipboard_shortcut: DEFAULT_CLIPBOARD_SHORTCUT.to_string(),
+            spotlight_opacity: DEFAULT_SPOTLIGHT_OPACITY,
         }
     }
 }
@@ -102,6 +112,18 @@ fn save_settings(app: &tauri::AppHandle, settings: &AppSettings) -> Result<(), S
 #[tauri::command]
 fn get_settings(app: tauri::AppHandle) -> AppSettings {
     load_settings(&app)
+}
+
+#[tauri::command]
+fn set_spotlight_opacity(app: tauri::AppHandle, opacity: f32) -> Result<(), String> {
+    let mut settings = load_settings(&app);
+    settings.spotlight_opacity = opacity.clamp(0.3, 1.0);
+    save_settings(&app, &settings)?;
+    // Live-update if Quick Chat happens to already be open.
+    if let Some(spotlight) = app.get_webview_window("spotlight") {
+        let _ = spotlight.emit("settings-changed", &settings);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -262,7 +284,7 @@ fn toggle_settings(app_handle: &tauri::AppHandle) {
 
     match WebviewWindowBuilder::new(app_handle, "settings", WebviewUrl::App("index.html?settings=1".into()))
         .title("Cài đặt - Gemini cho PC")
-        .inner_size(480.0, 480.0)
+        .inner_size(480.0, 580.0)
         .resizable(false)
         .center()
         .build()
@@ -376,6 +398,7 @@ fn restore_main_window(app_handle: &tauri::AppHandle) {
     match WebviewWindowBuilder::new(app_handle, "main", WebviewUrl::App("index.html".into()))
         .title("Gemini cho PC - TVT")
         .inner_size(1280.0, 800.0)
+        .maximized(true)
         .build()
     {
         Ok(window) => focus_window(&window),
@@ -447,6 +470,7 @@ pub fn run() {
             read_file_as_attachment,
             get_settings,
             update_shortcut,
+            set_spotlight_opacity,
             get_autostart_enabled,
             set_autostart_enabled
         ])

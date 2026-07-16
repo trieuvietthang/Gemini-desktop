@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 interface AppSettings {
   spotlight_shortcut: string;
   clipboard_shortcut: string;
+  spotlight_opacity: number;
 }
 
 type ShortcutSlot = "spotlight" | "clipboard";
@@ -94,6 +95,15 @@ export default function Settings() {
     }
   };
 
+  const changeOpacity = async (value: number) => {
+    setSettings(prev => (prev ? { ...prev, spotlight_opacity: value } : prev));
+    try {
+      await invoke("set_spotlight_opacity", { opacity: value });
+    } catch (err) {
+      setError(typeof err === "string" ? err : String(err));
+    }
+  };
+
   const clearApiKey = async () => {
     try {
       await invoke("clear_gemini_api_key");
@@ -140,6 +150,27 @@ export default function Settings() {
             <ShortcutRow slot="clipboard" label="Hỏi về nội dung đã copy" hint="Mở Quick Chat kèm nội dung clipboard" />
           </div>
           {error && <p className="text-xs text-authority-red mt-2">{error}</p>}
+        </section>
+
+        <section>
+          <h2 className="text-xs font-bold uppercase text-gray-400 mb-1">Giao diện Quick Chat</h2>
+          <div className="py-2">
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="text-sm font-medium text-gray-800">Độ trong suốt</div>
+              <span className="text-xs text-gray-400 font-mono">
+                {settings ? Math.round(settings.spotlight_opacity * 100) : "..."}%
+              </span>
+            </div>
+            <input
+              type="range"
+              min={30}
+              max={100}
+              value={settings ? Math.round(settings.spotlight_opacity * 100) : 90}
+              onChange={(e) => changeOpacity(Number(e.target.value) / 100)}
+              className="w-full accent-justice-blue cursor-pointer"
+            />
+            <div className="text-xs text-gray-400 mt-1">Áp dụng ngay cho cửa sổ Quick Chat</div>
+          </div>
         </section>
 
         <section>

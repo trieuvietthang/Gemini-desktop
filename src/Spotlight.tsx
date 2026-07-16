@@ -16,6 +16,10 @@ interface Message {
   attachments?: Attachment[];
 }
 
+interface AppSettings {
+  spotlight_opacity: number;
+}
+
 const QUICK_ACTIONS = [
   { label: "Tóm tắt", instruction: "Tóm tắt ngắn gọn nội dung sau:" },
   { label: "Dịch sang tiếng Anh", instruction: "Dịch nội dung sau sang tiếng Anh:" },
@@ -33,6 +37,7 @@ export default function Spotlight() {
   const [clipboardQuickActions, setClipboardQuickActions] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [opacity, setOpacity] = useState(0.9);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -42,12 +47,20 @@ export default function Spotlight() {
       .then(setApiKeyConfigured)
       .catch(() => setApiKeyConfigured(false));
 
+    invoke<AppSettings>("get_settings")
+      .then((s) => setOpacity(s.spotlight_opacity))
+      .catch(() => {});
+
     const win = getCurrentWindow();
     const webview = getCurrentWebview();
 
     const unlistenShown = listen("spotlight-shown", () => {
       setClipboardQuickActions(false);
       setTimeout(() => inputRef.current?.focus(), 50);
+    });
+
+    const unlistenSettings = listen<AppSettings>("settings-changed", (event) => {
+      setOpacity(event.payload.spotlight_opacity);
     });
 
     const unlistenClipboard = listen<string>("clipboard-capture", (event) => {
@@ -86,6 +99,7 @@ export default function Spotlight() {
 
     return () => {
       unlistenShown.then((f) => f());
+      unlistenSettings.then((f) => f());
       unlistenClipboard.then((f) => f());
       unlistenFocus.then((f) => f());
       unlistenDragDrop.then((f) => f());
@@ -191,19 +205,17 @@ export default function Spotlight() {
 
   return (
     <div className="w-screen h-screen flex items-start justify-center p-3">
-      <div className="bg-white w-full h-full rounded-2xl shadow-[0_12px_40px_rgba(0,0,0,0.3)] overflow-hidden flex flex-col border border-gray-100">
+      <div
+        style={{
+          backgroundColor: `rgba(255, 255, 255, ${opacity})`,
+          backdropFilter: "blur(24px)",
+          WebkitBackdropFilter: "blur(24px)",
+        }}
+        className="w-full h-full rounded-2xl shadow-[0_12px_40px_rgba(0,0,0,0.3)] overflow-hidden flex flex-col border border-white/40"
+      >
         {apiKeyConfigured === false ? (
           <form onSubmit={handleSaveApiKey} className="p-6 flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <span className="text-justice-blue font-bold">Cấu hình Gemini API key</span>
-              <button
-                type="button"
-                onClick={() => getCurrentWindow().hide()}
-                className="text-gray-400 hover:text-gray-600 cursor-pointer p-1"
-              >
-                ✕
-              </button>
-            </div>
+            <span className="text-justice-blue font-bold">Cấu hình Gemini API key</span>
             <p className="text-sm text-gray-500">
               Nhập Gemini API key để dùng Quick Chat. Key được lưu cục bộ trên máy này, không gửi đi đâu khác.
             </p>
@@ -225,25 +237,16 @@ export default function Spotlight() {
           </form>
         ) : (
           <>
-            <div className="p-3 border-b border-gray-100 flex items-center justify-between">
+            <div className="p-3 border-b border-white/40 flex items-center justify-between">
               <span className="text-justice-blue font-bold px-1">✨ Quick Chat</span>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={handleNewChat}
-                  title="Cuộc trò chuyện mới"
-                  className="text-gray-400 hover:text-gray-600 cursor-pointer p-1.5 rounded-lg hover:bg-gray-100 text-sm"
-                >
-                  🔄
-                </button>
-                <button
-                  type="button"
-                  onClick={() => getCurrentWindow().hide()}
-                  className="text-gray-400 hover:text-gray-600 cursor-pointer p-1.5 rounded-lg hover:bg-gray-100"
-                >
-                  ✕
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={handleNewChat}
+                title="Cuộc trò chuyện mới"
+                className="text-gray-400 hover:text-gray-600 cursor-pointer p-1.5 rounded-lg hover:bg-gray-100 text-sm"
+              >
+                🔄
+              </button>
             </div>
 
             {(messages.length > 0 || isGenerating) && (

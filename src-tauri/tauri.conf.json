@@ -15,7 +15,8 @@
         "label": "main",
         "title": "Gemini cho PC - TVT",
         "width": 1280,
-        "height": 800
+        "height": 800,
+        "maximized": true
       },
       {
         "label": "spotlight",
@@ -39,7 +40,7 @@
         "title": "Cài đặt - Gemini cho PC",
         "url": "index.html?settings=1",
         "width": 480,
-        "height": 480,
+        "height": 580,
         "resizable": false,
         "center": true,
         "visible": false
