@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 interface AppSettings {
@@ -38,6 +37,7 @@ export default function Settings() {
   const [capturing, setCapturing] = useState<ShortcutSlot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmClearKey, setConfirmClearKey] = useState(false);
+  const capturingRef = useRef<ShortcutSlot | null>(null);
 
   const refresh = () => {
     invoke<AppSettings>("get_settings").then(setSettings).catch(console.error);
@@ -46,10 +46,15 @@ export default function Settings() {
   };
 
   useEffect(() => {
+    capturingRef.current = capturing;
+  }, [capturing]);
+
+  useEffect(() => {
     refresh();
-    const win = getCurrentWindow();
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !capturing) win.hide();
+      if (e.key === "Escape" && !capturingRef.current) {
+        invoke("hide_settings_window").catch(console.error);
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -202,7 +207,7 @@ export default function Settings() {
       <div className="px-5 py-3 border-t border-gray-100 flex justify-end">
         <button
           type="button"
-          onClick={() => getCurrentWindow().hide()}
+          onClick={() => invoke("hide_settings_window").catch(console.error)}
           className="px-4 py-2 bg-justice-blue text-white rounded-xl text-sm font-bold shadow-md hover:bg-blue-800 transition-colors cursor-pointer"
         >
           Đóng

@@ -246,20 +246,45 @@ fn open_spotlight_with_clipboard(app_handle: &tauri::AppHandle) {
     }
 }
 
+// Settings has real window decorations (title bar, native X), and X isn't
+// intercepted — so unlike the spotlight window, it can actually be destroyed
+// (not just hidden) by the user. Same fix as the main window: rebuild it on
+// demand if it's gone instead of assuming it's still there to show/hide.
 fn toggle_settings(app_handle: &tauri::AppHandle) {
     if let Some(settings) = app_handle.get_webview_window("settings") {
         if settings.is_visible().unwrap_or(false) {
             let _ = settings.hide();
         } else {
-            let _ = settings.show();
-            let _ = settings.set_focus();
+            focus_window(&settings);
         }
+        return;
+    }
+
+    match WebviewWindowBuilder::new(app_handle, "settings", WebviewUrl::App("index.html?settings=1".into()))
+        .title("Cài đặt - Gemini cho PC")
+        .inner_size(480.0, 480.0)
+        .resizable(false)
+        .center()
+        .build()
+    {
+        Ok(window) => focus_window(&window),
+        Err(e) => eprintln!("toggle_settings: failed to rebuild settings window: {e}"),
     }
 }
 
 #[tauri::command]
 fn toggle_settings_window(app: tauri::AppHandle) {
     toggle_settings(&app);
+}
+
+// Called from the Settings window's own "Đóng" button. Hiding via a Rust
+// command instead of the JS window.hide() API sidesteps whatever made the
+// frontend call a no-op for this particular window.
+#[tauri::command]
+fn hide_settings_window(app: tauri::AppHandle) {
+    if let Some(settings) = app.get_webview_window("settings") {
+        let _ = settings.hide();
+    }
 }
 
 // Both used at startup (with the saved/default combo) and from the Settings
@@ -417,6 +442,7 @@ pub fn run() {
             generate_content,
             toggle_spotlight_window,
             toggle_settings_window,
+            hide_settings_window,
             read_clipboard_text,
             read_file_as_attachment,
             get_settings,
