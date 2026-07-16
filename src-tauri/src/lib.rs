@@ -52,18 +52,47 @@ fn set_gemini_api_key(app: tauri::AppHandle, key: String) -> Result<(), String> 
     fs::write(path, data).map_err(|e| e.to_string())
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+struct Attachment {
+    mime_type: String,
+    /// Raw base64 (no `data:...;base64,` prefix).
+    data: String,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct ChatMessage {
+    role: String, // "user" | "model"
+    text: String,
+    #[serde(default)]
+    attachments: Vec<Attachment>,
+}
+
+// `history` is the whole conversation so far (including the newest user
+// message last), letting Quick Chat hold a real multi-turn conversation
+// instead of treating every question as a one-off.
 #[tauri::command]
-async fn generate_content(app: tauri::AppHandle, prompt: String) -> Result<String, String> {
+async fn generate_content(app: tauri::AppHandle, history: Vec<ChatMessage>) -> Result<String, String> {
     let api_key = load_api_key(&app)
         .ok_or_else(|| "Chưa cấu hình Gemini API key".to_string())?;
+
+    let contents: Vec<serde_json::Value> = history
+        .iter()
+        .map(|m| {
+            let mut parts = vec![serde_json::json!({ "text": m.text })];
+            for att in &m.attachments {
+                parts.push(serde_json::json!({
+                    "inline_data": { "mime_type": att.mime_type, "data": att.data }
+                }));
+            }
+            serde_json::json!({ "role": m.role, "parts": parts })
+        })
+        .collect();
 
     let client = reqwest::Client::new();
     let res = client
         .post(GEMINI_MODEL_URL)
         .header("X-goog-api-key", api_key)
-        .json(&serde_json::json!({
-            "contents": [{ "parts": [{ "text": prompt }] }]
-        }))
+        .json(&serde_json::json!({ "contents": contents }))
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -80,6 +109,39 @@ async fn generate_content(app: tauri::AppHandle, prompt: String) -> Result<Strin
         .as_str()
         .map(|s| s.to_string())
         .ok_or_else(|| "Sorry, I could not generate a response.".to_string())
+}
+
+#[tauri::command]
+fn read_clipboard_text() -> Result<String, String> {
+    let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
+    clipboard.get_text().map_err(|e| e.to_string())
+}
+
+fn guess_mime_type(path: &str) -> &'static str {
+    let lower = path.to_lowercase();
+    if lower.ends_with(".png") {
+        "image/png"
+    } else if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
+        "image/jpeg"
+    } else if lower.ends_with(".webp") {
+        "image/webp"
+    } else if lower.ends_with(".gif") {
+        "image/gif"
+    } else if lower.ends_with(".pdf") {
+        "application/pdf"
+    } else {
+        "application/octet-stream"
+    }
+}
+
+#[tauri::command]
+fn read_file_as_attachment(path: String) -> Result<Attachment, String> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    let bytes = fs::read(&path).map_err(|e| e.to_string())?;
+    Ok(Attachment {
+        mime_type: guess_mime_type(&path).to_string(),
+        data: STANDARD.encode(bytes),
+    })
 }
 
 // The spotlight is a separate always-on-top window (see tauri.conf.json) rather
@@ -101,6 +163,21 @@ fn toggle_spotlight(app_handle: &tauri::AppHandle) {
 #[tauri::command]
 fn toggle_spotlight_window(app: tauri::AppHandle) {
     toggle_spotlight(&app);
+}
+
+// Ctrl+Shift+C: grab whatever's on the clipboard (user copies text/selection
+// first) and open the spotlight with it ready to go, instead of making them
+// open Quick Chat and paste manually.
+fn open_spotlight_with_clipboard(app_handle: &tauri::AppHandle) {
+    let text = arboard::Clipboard::new()
+        .and_then(|mut c| c.get_text())
+        .unwrap_or_default();
+
+    if let Some(spotlight) = app_handle.get_webview_window("spotlight") {
+        let _ = spotlight.show();
+        let _ = spotlight.set_focus();
+        let _ = spotlight.emit("clipboard-capture", text);
+    }
 }
 
 fn focus_window(window: &tauri::WebviewWindow) {
@@ -170,13 +247,19 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // Setup Global Shortcut (Ctrl+Shift+Space)
-            let shortcut = Shortcut::from_str("Ctrl+Shift+Space").unwrap();
-            
-            // Register shortcut, ignore error if already registered to prevent panic
-            let _ = app.global_shortcut().on_shortcut(shortcut, move |app_handle, _shortcut, event| {
+            // Setup Global Shortcuts
+            let spotlight_shortcut = Shortcut::from_str("Ctrl+Shift+Space").unwrap();
+            let clipboard_shortcut = Shortcut::from_str("Ctrl+Shift+C").unwrap();
+
+            // Register shortcuts, ignore error if already registered to prevent panic
+            let _ = app.global_shortcut().on_shortcut(spotlight_shortcut, move |app_handle, _shortcut, event| {
                 if event.state == ShortcutState::Pressed {
                     toggle_spotlight(app_handle);
+                }
+            });
+            let _ = app.global_shortcut().on_shortcut(clipboard_shortcut, move |app_handle, _shortcut, event| {
+                if event.state == ShortcutState::Pressed {
+                    open_spotlight_with_clipboard(app_handle);
                 }
             });
 
@@ -187,7 +270,9 @@ pub fn run() {
             has_gemini_api_key,
             set_gemini_api_key,
             generate_content,
-            toggle_spotlight_window
+            toggle_spotlight_window,
+            read_clipboard_text,
+            read_file_as_attachment
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
