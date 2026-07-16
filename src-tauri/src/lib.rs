@@ -4,7 +4,7 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
-use tauri::{Manager, Emitter, WebviewWindowBuilder, WebviewUrl, menu::{Menu, MenuItem}, tray::{TrayIconBuilder, MouseButton, MouseButtonState, TrayIconEvent}};
+use tauri::{Manager, Emitter, WebviewWindowBuilder, WebviewUrl, WindowEvent, menu::{Menu, MenuItem}, tray::{TrayIconBuilder, MouseButton, MouseButtonState, TrayIconEvent}};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use std::str::FromStr;
 use std::fs;
@@ -320,10 +320,13 @@ fn open_spotlight_with_clipboard(app_handle: &tauri::AppHandle) {
     }
 }
 
-// Settings has real window decorations (title bar, native X), and X isn't
-// intercepted — so unlike the spotlight window, it can actually be destroyed
-// (not just hidden) by the user. Same fix as the main window: rebuild it on
-// demand if it's gone instead of assuming it's still there to show/hide.
+// Settings has real window decorations (title bar, native X). Its
+// CloseRequested is intercepted in setup() (hide instead of destroy) — unlike
+// the main window, Settings has no child Webviews attached, so hide() is
+// expected to behave normally here rather than hitting the destroy-on-hide
+// issue main window has. The rebuild fallback below is a last resort only;
+// rebuilding a window from a tray-menu callback was observed to hang the
+// whole app's event loop, so avoid ever reaching it in normal operation.
 fn toggle_settings(app_handle: &tauri::AppHandle) {
     if let Some(settings) = app_handle.get_webview_window("settings") {
         if settings.is_visible().unwrap_or(false) {
@@ -468,6 +471,22 @@ pub fn run() {
             None,
         ))
         .setup(|app| {
+            // Settings has no child Webviews, so unlike the main window,
+            // hide() is expected to actually just hide it rather than
+            // destroy it. Intercept its native X (it has real decorations,
+            // unlike spotlight) so it never needs to go through the
+            // WebviewWindowBuilder rebuild path, which hung the whole app's
+            // event loop when triggered from a tray-menu callback.
+            if let Some(settings_window) = app.get_webview_window("settings") {
+                let settings_window_for_close = settings_window.clone();
+                settings_window.on_window_event(move |event| {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = settings_window_for_close.hide();
+                    }
+                });
+            }
+
             // Setup Tray Icon
             let show_item = MenuItem::with_id(app, "show", "Hiện cửa sổ", true, None::<&str>)?;
             let settings_item = MenuItem::with_id(app, "settings", "Cài đặt", true, None::<&str>)?;
