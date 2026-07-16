@@ -2,10 +2,11 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main", "spotlight"],
+  "windows": ["main", "spotlight", "settings"],
   "permissions": [
     "core:default",
     "opener:default",
+    "autostart:default",
     "core:webview:default",
     "core:webview:allow-create-webview",
     "core:webview:allow-webview-hide",

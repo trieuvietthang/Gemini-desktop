@@ -52,6 +52,72 @@ fn set_gemini_api_key(app: tauri::AppHandle, key: String) -> Result<(), String> 
     fs::write(path, data).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn clear_gemini_api_key(app: tauri::AppHandle) -> Result<(), String> {
+    let path = secrets_path(&app)?;
+    if path.exists() {
+        fs::remove_file(path).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+const DEFAULT_SPOTLIGHT_SHORTCUT: &str = "Ctrl+Shift+Space";
+const DEFAULT_CLIPBOARD_SHORTCUT: &str = "Ctrl+Alt+C";
+
+#[derive(Serialize, Deserialize, Clone)]
+struct AppSettings {
+    spotlight_shortcut: String,
+    clipboard_shortcut: String,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            spotlight_shortcut: DEFAULT_SPOTLIGHT_SHORTCUT.to_string(),
+            clipboard_shortcut: DEFAULT_CLIPBOARD_SHORTCUT.to_string(),
+        }
+    }
+}
+
+fn settings_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.join("settings.json"))
+}
+
+fn load_settings(app: &tauri::AppHandle) -> AppSettings {
+    settings_path(app)
+        .ok()
+        .and_then(|path| fs::read_to_string(path).ok())
+        .and_then(|data| serde_json::from_str(&data).ok())
+        .unwrap_or_default()
+}
+
+fn save_settings(app: &tauri::AppHandle, settings: &AppSettings) -> Result<(), String> {
+    let path = settings_path(app)?;
+    let data = serde_json::to_string_pretty(settings).map_err(|e| e.to_string())?;
+    fs::write(path, data).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_settings(app: tauri::AppHandle) -> AppSettings {
+    load_settings(&app)
+}
+
+#[tauri::command]
+fn get_autostart_enabled(app: tauri::AppHandle) -> bool {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch().is_enabled().unwrap_or(false)
+}
+
+#[tauri::command]
+fn set_autostart_enabled(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let manager = app.autolaunch();
+    let result = if enabled { manager.enable() } else { manager.disable() };
+    result.map_err(|e| e.to_string())
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 struct Attachment {
     mime_type: String,
@@ -165,9 +231,9 @@ fn toggle_spotlight_window(app: tauri::AppHandle) {
     toggle_spotlight(&app);
 }
 
-// Ctrl+Shift+C: grab whatever's on the clipboard (user copies text/selection
-// first) and open the spotlight with it ready to go, instead of making them
-// open Quick Chat and paste manually.
+// Grab whatever's on the clipboard (user copies text/selection first) and
+// open the spotlight with it ready to go, instead of making them open Quick
+// Chat and paste manually.
 fn open_spotlight_with_clipboard(app_handle: &tauri::AppHandle) {
     let text = arboard::Clipboard::new()
         .and_then(|mut c| c.get_text())
@@ -178,6 +244,84 @@ fn open_spotlight_with_clipboard(app_handle: &tauri::AppHandle) {
         let _ = spotlight.set_focus();
         let _ = spotlight.emit("clipboard-capture", text);
     }
+}
+
+fn toggle_settings(app_handle: &tauri::AppHandle) {
+    if let Some(settings) = app_handle.get_webview_window("settings") {
+        if settings.is_visible().unwrap_or(false) {
+            let _ = settings.hide();
+        } else {
+            let _ = settings.show();
+            let _ = settings.set_focus();
+        }
+    }
+}
+
+#[tauri::command]
+fn toggle_settings_window(app: tauri::AppHandle) {
+    toggle_settings(&app);
+}
+
+// Both used at startup (with the saved/default combo) and from the Settings
+// window (with a newly picked combo), so the handler logic only lives once.
+fn register_spotlight_shortcut(app: &tauri::AppHandle, combo: &str) -> Result<(), String> {
+    let shortcut = Shortcut::from_str(combo).map_err(|e| e.to_string())?;
+    app.global_shortcut()
+        .on_shortcut(shortcut, move |app_handle, _shortcut, event| {
+            if event.state == ShortcutState::Pressed {
+                toggle_spotlight(app_handle);
+            }
+        })
+        .map_err(|e| e.to_string())
+}
+
+fn register_clipboard_shortcut(app: &tauri::AppHandle, combo: &str) -> Result<(), String> {
+    let shortcut = Shortcut::from_str(combo).map_err(|e| e.to_string())?;
+    app.global_shortcut()
+        .on_shortcut(shortcut, move |app_handle, _shortcut, event| {
+            if event.state == ShortcutState::Pressed {
+                open_spotlight_with_clipboard(app_handle);
+            }
+        })
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn update_shortcut(app: tauri::AppHandle, which: String, combo: String) -> Result<(), String> {
+    // Validate before touching anything so a bad combo never unregisters the
+    // working one.
+    Shortcut::from_str(&combo).map_err(|e| format!("Tổ hợp phím không hợp lệ: {e}"))?;
+
+    let mut settings = load_settings(&app);
+    let old_combo = match which.as_str() {
+        "spotlight" => settings.spotlight_shortcut.clone(),
+        "clipboard" => settings.clipboard_shortcut.clone(),
+        _ => return Err(format!("Unknown shortcut slot: {which}")),
+    };
+    if let Ok(old_shortcut) = Shortcut::from_str(&old_combo) {
+        let _ = app.global_shortcut().unregister(old_shortcut);
+    }
+
+    let register_result = match which.as_str() {
+        "spotlight" => register_spotlight_shortcut(&app, &combo),
+        "clipboard" => register_clipboard_shortcut(&app, &combo),
+        _ => unreachable!(),
+    };
+
+    if let Err(e) = register_result {
+        // Re-register the old combo so the app isn't left with neither.
+        let _ = match which.as_str() {
+            "spotlight" => register_spotlight_shortcut(&app, &old_combo),
+            _ => register_clipboard_shortcut(&app, &old_combo),
+        };
+        return Err(e);
+    }
+
+    match which.as_str() {
+        "spotlight" => settings.spotlight_shortcut = combo,
+        _ => settings.clipboard_shortcut = combo,
+    }
+    save_settings(&app, &settings)
 }
 
 fn focus_window(window: &tauri::WebviewWindow) {
@@ -219,11 +363,16 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .setup(|app| {
             // Setup Tray Icon
             let show_item = MenuItem::with_id(app, "show", "Hiện cửa sổ", true, None::<&str>)?;
+            let settings_item = MenuItem::with_id(app, "settings", "Cài đặt", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Thoát", true, None::<&str>)?;
-            let tray_menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+            let tray_menu = Menu::with_items(app, &[&show_item, &settings_item, &quit_item])?;
 
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
@@ -233,6 +382,7 @@ pub fn run() {
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => restore_main_window(app),
+                    "settings" => toggle_settings(app),
                     "quit" => app.exit(0),
                     _ => {}
                 })
@@ -247,29 +397,14 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // Setup Global Shortcuts
-            let spotlight_shortcut = Shortcut::from_str("Ctrl+Shift+Space").unwrap();
-            // Ctrl+Shift+C is Windows' own Copilot shortcut and Ctrl+Alt+G was
-            // already claimed by something else on this machine — both failed
-            // registration.
-            let clipboard_shortcut = Shortcut::from_str("Ctrl+Alt+C").unwrap();
-
-            // Register shortcuts; log (rather than silently ignore) if one is
-            // already claimed by the OS or another app, since that's exactly the
-            // kind of failure that's otherwise invisible.
-            if let Err(e) = app.global_shortcut().on_shortcut(spotlight_shortcut, move |app_handle, _shortcut, event| {
-                if event.state == ShortcutState::Pressed {
-                    toggle_spotlight(app_handle);
-                }
-            }) {
-                eprintln!("Failed to register Ctrl+Shift+Space shortcut: {e}");
+            // Setup Global Shortcuts, using the saved combo if the user has
+            // customized it via Settings, otherwise the defaults.
+            let settings = load_settings(app.handle());
+            if let Err(e) = register_spotlight_shortcut(app.handle(), &settings.spotlight_shortcut) {
+                eprintln!("Failed to register spotlight shortcut '{}': {e}", settings.spotlight_shortcut);
             }
-            if let Err(e) = app.global_shortcut().on_shortcut(clipboard_shortcut, move |app_handle, _shortcut, event| {
-                if event.state == ShortcutState::Pressed {
-                    open_spotlight_with_clipboard(app_handle);
-                }
-            }) {
-                eprintln!("Failed to register Ctrl+Alt+C shortcut: {e}");
+            if let Err(e) = register_clipboard_shortcut(app.handle(), &settings.clipboard_shortcut) {
+                eprintln!("Failed to register clipboard shortcut '{}': {e}", settings.clipboard_shortcut);
             }
 
             Ok(())
@@ -278,10 +413,16 @@ pub fn run() {
             greet,
             has_gemini_api_key,
             set_gemini_api_key,
+            clear_gemini_api_key,
             generate_content,
             toggle_spotlight_window,
+            toggle_settings_window,
             read_clipboard_text,
-            read_file_as_attachment
+            read_file_as_attachment,
+            get_settings,
+            update_shortcut,
+            get_autostart_enabled,
+            set_autostart_enabled
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

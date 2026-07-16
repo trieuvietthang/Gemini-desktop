@@ -33,6 +33,16 @@
         "skipTaskbar": true,
         "center": true,
         "visible": false
+      },
+      {
+        "label": "settings",
+        "title": "Cài đặt - Gemini cho PC",
+        "url": "index.html?settings=1",
+        "width": 480,
+        "height": 480,
+        "resizable": false,
+        "center": true,
+        "visible": false
       }
     ],
     "security": {
