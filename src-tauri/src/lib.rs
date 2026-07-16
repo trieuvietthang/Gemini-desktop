@@ -249,11 +249,10 @@ pub fn run() {
 
             // Setup Global Shortcuts
             let spotlight_shortcut = Shortcut::from_str("Ctrl+Shift+Space").unwrap();
-            // Ctrl+Shift+C is Windows' own Copilot shortcut (intercepted system-wide
-            // before we ever see it) and Ctrl+Alt+G was already claimed by something
-            // else running on this machine — both failed registration. Three
-            // modifiers is unusual enough to actually be free.
-            let clipboard_shortcut = Shortcut::from_str("Ctrl+Alt+Shift+G").unwrap();
+            // Ctrl+Shift+C is Windows' own Copilot shortcut and Ctrl+Alt+G was
+            // already claimed by something else on this machine — both failed
+            // registration.
+            let clipboard_shortcut = Shortcut::from_str("Ctrl+Alt+C").unwrap();
 
             // Register shortcuts; log (rather than silently ignore) if one is
             // already claimed by the OS or another app, since that's exactly the
@@ -270,7 +269,7 @@ pub fn run() {
                     open_spotlight_with_clipboard(app_handle);
                 }
             }) {
-                eprintln!("Failed to register Ctrl+Alt+Shift+G shortcut: {e}");
+                eprintln!("Failed to register Ctrl+Alt+C shortcut: {e}");
             }
 
             Ok(())
