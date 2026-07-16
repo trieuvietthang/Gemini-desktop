@@ -249,19 +249,28 @@ pub fn run() {
 
             // Setup Global Shortcuts
             let spotlight_shortcut = Shortcut::from_str("Ctrl+Shift+Space").unwrap();
-            let clipboard_shortcut = Shortcut::from_str("Ctrl+Shift+C").unwrap();
+            // Ctrl+Shift+C is Windows' own Copilot shortcut, which intercepts it
+            // system-wide before our registration ever sees it. Ctrl+Alt+G is far
+            // less likely to already be claimed by the OS or another app.
+            let clipboard_shortcut = Shortcut::from_str("Ctrl+Alt+G").unwrap();
 
-            // Register shortcuts, ignore error if already registered to prevent panic
-            let _ = app.global_shortcut().on_shortcut(spotlight_shortcut, move |app_handle, _shortcut, event| {
+            // Register shortcuts; log (rather than silently ignore) if one is
+            // already claimed by the OS or another app, since that's exactly the
+            // kind of failure that's otherwise invisible.
+            if let Err(e) = app.global_shortcut().on_shortcut(spotlight_shortcut, move |app_handle, _shortcut, event| {
                 if event.state == ShortcutState::Pressed {
                     toggle_spotlight(app_handle);
                 }
-            });
-            let _ = app.global_shortcut().on_shortcut(clipboard_shortcut, move |app_handle, _shortcut, event| {
+            }) {
+                eprintln!("Failed to register Ctrl+Shift+Space shortcut: {e}");
+            }
+            if let Err(e) = app.global_shortcut().on_shortcut(clipboard_shortcut, move |app_handle, _shortcut, event| {
                 if event.state == ShortcutState::Pressed {
                     open_spotlight_with_clipboard(app_handle);
                 }
-            });
+            }) {
+                eprintln!("Failed to register Ctrl+Alt+G shortcut: {e}");
+            }
 
             Ok(())
         })
