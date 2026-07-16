@@ -271,8 +271,12 @@ fn write_clipboard_text(text: String) -> Result<(), String> {
 #[tauri::command]
 fn open_in_ai_studio(app: tauri::AppHandle) {
     restore_main_window(&app);
-    if let Some(main_window) = app.get_webview_window("main") {
-        let _ = main_window.emit("switch-tab", "aistudio");
+    match app.get_webview_window("main") {
+        Some(main_window) => {
+            let result = main_window.emit_to("main", "switch-tab", "aistudio");
+            eprintln!("open_in_ai_studio: emit switch-tab -> {:?}", result);
+        }
+        None => eprintln!("open_in_ai_studio: main window not found"),
     }
 }
 

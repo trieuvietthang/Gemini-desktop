@@ -74,6 +74,13 @@ export default function App() {
       // without this the content is stuck at one scale regardless of the
       // display's resolution/DPI.
       zoomHotkeysEnabled: true,
+      // On Windows, Tauri's native OS-level drag-drop and a page's own HTML5
+      // drag-drop are mutually exclusive per webview. These tabs are real
+      // Google web apps with their own file-upload drop zones, so disable
+      // Tauri's interception here and let the page handle drops itself
+      // (Quick Chat's spotlight window is the opposite case: it relies on
+      // Tauri's own onDragDropEvent, so it keeps the default there).
+      dragDropEnabled: false,
     });
     webviewsRef.current[tab.id] = webview;
 
