@@ -11,8 +11,6 @@ use std::fs;
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
-const GEMINI_MODEL_URL: &str = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent";
-
 #[derive(Serialize, Deserialize, Default)]
 struct Secrets {
     gemini_api_key: Option<String>,
@@ -64,9 +62,17 @@ fn clear_gemini_api_key(app: tauri::AppHandle) -> Result<(), String> {
 const DEFAULT_SPOTLIGHT_SHORTCUT: &str = "Ctrl+Shift+Space";
 const DEFAULT_CLIPBOARD_SHORTCUT: &str = "Ctrl+Alt+C";
 const DEFAULT_SPOTLIGHT_OPACITY: f32 = 0.9;
+const DEFAULT_GEMINI_MODEL: &str = "gemini-flash-latest";
+const DEFAULT_TEMPERATURE: f32 = 1.0;
 
 fn default_spotlight_opacity() -> f32 {
     DEFAULT_SPOTLIGHT_OPACITY
+}
+fn default_gemini_model() -> String {
+    DEFAULT_GEMINI_MODEL.to_string()
+}
+fn default_temperature() -> f32 {
+    DEFAULT_TEMPERATURE
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -77,6 +83,12 @@ struct AppSettings {
     // existed still load instead of falling back to *all* defaults.
     #[serde(default = "default_spotlight_opacity")]
     spotlight_opacity: f32,
+    #[serde(default = "default_gemini_model")]
+    gemini_model: String,
+    #[serde(default = "default_temperature")]
+    gemini_temperature: f32,
+    #[serde(default)]
+    system_instruction: String,
 }
 
 impl Default for AppSettings {
@@ -85,6 +97,9 @@ impl Default for AppSettings {
             spotlight_shortcut: DEFAULT_SPOTLIGHT_SHORTCUT.to_string(),
             clipboard_shortcut: DEFAULT_CLIPBOARD_SHORTCUT.to_string(),
             spotlight_opacity: DEFAULT_SPOTLIGHT_OPACITY,
+            gemini_model: DEFAULT_GEMINI_MODEL.to_string(),
+            gemini_temperature: DEFAULT_TEMPERATURE,
+            system_instruction: String::new(),
         }
     }
 }
@@ -127,6 +142,27 @@ fn set_spotlight_opacity(app: tauri::AppHandle, opacity: f32) -> Result<(), Stri
 }
 
 #[tauri::command]
+fn set_gemini_model(app: tauri::AppHandle, model: String) -> Result<(), String> {
+    let mut settings = load_settings(&app);
+    settings.gemini_model = model;
+    save_settings(&app, &settings)
+}
+
+#[tauri::command]
+fn set_gemini_temperature(app: tauri::AppHandle, temperature: f32) -> Result<(), String> {
+    let mut settings = load_settings(&app);
+    settings.gemini_temperature = temperature.clamp(0.0, 2.0);
+    save_settings(&app, &settings)
+}
+
+#[tauri::command]
+fn set_system_instruction(app: tauri::AppHandle, instruction: String) -> Result<(), String> {
+    let mut settings = load_settings(&app);
+    settings.system_instruction = instruction;
+    save_settings(&app, &settings)
+}
+
+#[tauri::command]
 fn get_autostart_enabled(app: tauri::AppHandle) -> bool {
     use tauri_plugin_autostart::ManagerExt;
     app.autolaunch().is_enabled().unwrap_or(false)
@@ -162,6 +198,7 @@ struct ChatMessage {
 async fn generate_content(app: tauri::AppHandle, history: Vec<ChatMessage>) -> Result<String, String> {
     let api_key = load_api_key(&app)
         .ok_or_else(|| "Chưa cấu hình Gemini API key".to_string())?;
+    let settings = load_settings(&app);
 
     let contents: Vec<serde_json::Value> = history
         .iter()
@@ -176,11 +213,26 @@ async fn generate_content(app: tauri::AppHandle, history: Vec<ChatMessage>) -> R
         })
         .collect();
 
+    let mut body = serde_json::json!({
+        "contents": contents,
+        "generationConfig": { "temperature": settings.gemini_temperature },
+    });
+    if !settings.system_instruction.trim().is_empty() {
+        body["systemInstruction"] = serde_json::json!({
+            "parts": [{ "text": settings.system_instruction }]
+        });
+    }
+
+    let url = format!(
+        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
+        settings.gemini_model
+    );
+
     let client = reqwest::Client::new();
     let res = client
-        .post(GEMINI_MODEL_URL)
+        .post(url)
         .header("X-goog-api-key", api_key)
-        .json(&serde_json::json!({ "contents": contents }))
+        .json(&body)
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -284,7 +336,7 @@ fn toggle_settings(app_handle: &tauri::AppHandle) {
 
     match WebviewWindowBuilder::new(app_handle, "settings", WebviewUrl::App("index.html?settings=1".into()))
         .title("Cài đặt - Gemini cho PC")
-        .inner_size(480.0, 580.0)
+        .inner_size(480.0, 700.0)
         .resizable(false)
         .center()
         .build()
@@ -471,6 +523,9 @@ pub fn run() {
             get_settings,
             update_shortcut,
             set_spotlight_opacity,
+            set_gemini_model,
+            set_gemini_temperature,
+            set_system_instruction,
             get_autostart_enabled,
             set_autostart_enabled
         ])

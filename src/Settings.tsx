@@ -5,9 +5,18 @@ interface AppSettings {
   spotlight_shortcut: string;
   clipboard_shortcut: string;
   spotlight_opacity: number;
+  gemini_model: string;
+  gemini_temperature: number;
+  system_instruction: string;
 }
 
 type ShortcutSlot = "spotlight" | "clipboard";
+
+const MODELS = [
+  { id: "gemini-flash-latest", label: "Gemini Flash — nhanh, cân bằng (khuyến nghị)" },
+  { id: "gemini-flash-lite-latest", label: "Gemini Flash-Lite — nhẹ nhất, nhanh nhất" },
+  { id: "gemini-pro-latest", label: "Gemini Pro — mạnh nhất, chậm hơn" },
+];
 
 const IGNORED_KEYS = new Set(["Control", "Alt", "Shift", "Meta"]);
 
@@ -38,10 +47,16 @@ export default function Settings() {
   const [capturing, setCapturing] = useState<ShortcutSlot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmClearKey, setConfirmClearKey] = useState(false);
+  const [systemInstructionDraft, setSystemInstructionDraft] = useState("");
   const capturingRef = useRef<ShortcutSlot | null>(null);
 
   const refresh = () => {
-    invoke<AppSettings>("get_settings").then(setSettings).catch(console.error);
+    invoke<AppSettings>("get_settings")
+      .then((s) => {
+        setSettings(s);
+        setSystemInstructionDraft(s.system_instruction);
+      })
+      .catch(console.error);
     invoke<boolean>("get_autostart_enabled").then(setAutostart).catch(console.error);
     invoke<boolean>("has_gemini_api_key").then(setApiKeyConfigured).catch(console.error);
   };
@@ -90,6 +105,33 @@ export default function Settings() {
     try {
       await invoke("set_autostart_enabled", { enabled: next });
       setAutostart(next);
+    } catch (err) {
+      setError(typeof err === "string" ? err : String(err));
+    }
+  };
+
+  const changeModel = async (model: string) => {
+    setSettings(prev => (prev ? { ...prev, gemini_model: model } : prev));
+    try {
+      await invoke("set_gemini_model", { model });
+    } catch (err) {
+      setError(typeof err === "string" ? err : String(err));
+    }
+  };
+
+  const changeTemperature = async (value: number) => {
+    setSettings(prev => (prev ? { ...prev, gemini_temperature: value } : prev));
+    try {
+      await invoke("set_gemini_temperature", { temperature: value });
+    } catch (err) {
+      setError(typeof err === "string" ? err : String(err));
+    }
+  };
+
+  const saveSystemInstruction = async () => {
+    setSettings(prev => (prev ? { ...prev, system_instruction: systemInstructionDraft } : prev));
+    try {
+      await invoke("set_system_instruction", { instruction: systemInstructionDraft });
     } catch (err) {
       setError(typeof err === "string" ? err : String(err));
     }
@@ -150,6 +192,51 @@ export default function Settings() {
             <ShortcutRow slot="clipboard" label="Hỏi về nội dung đã copy" hint="Mở Quick Chat kèm nội dung clipboard" />
           </div>
           {error && <p className="text-xs text-authority-red mt-2">{error}</p>}
+        </section>
+
+        <section>
+          <h2 className="text-xs font-bold uppercase text-gray-400 mb-1">Model &amp; độ sáng tạo</h2>
+          <div className="py-2">
+            <div className="text-sm font-medium text-gray-800 mb-1.5">Model Gemini</div>
+            <select
+              value={settings?.gemini_model ?? "gemini-flash-latest"}
+              onChange={(e) => changeModel(e.target.value)}
+              className="w-full text-sm px-3 py-2 rounded-lg bg-gray-100 text-gray-800 outline-none cursor-pointer"
+            >
+              {MODELS.map((m) => (
+                <option key={m.id} value={m.id}>{m.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="py-2">
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="text-sm font-medium text-gray-800">Độ sáng tạo (temperature)</div>
+              <span className="text-xs text-gray-400 font-mono">
+                {settings ? settings.gemini_temperature.toFixed(1) : "..."}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={20}
+              value={settings ? Math.round(settings.gemini_temperature * 10) : 10}
+              onChange={(e) => changeTemperature(Number(e.target.value) / 10)}
+              className="w-full accent-justice-blue cursor-pointer"
+            />
+            <div className="text-xs text-gray-400 mt-1">Thấp = chính xác, bám sát dữ kiện. Cao = sáng tạo, đa dạng hơn.</div>
+          </div>
+          <div className="py-2">
+            <div className="text-sm font-medium text-gray-800 mb-1.5">Vai trò hệ thống (system instruction)</div>
+            <textarea
+              value={systemInstructionDraft}
+              onChange={(e) => setSystemInstructionDraft(e.target.value)}
+              onBlur={saveSystemInstruction}
+              placeholder="Ví dụ: Bạn là trợ lý pháp lý, trả lời ngắn gọn, chính xác, có trích dẫn căn cứ pháp luật khi có thể."
+              rows={3}
+              className="w-full text-sm px-3 py-2 rounded-lg bg-gray-100 text-gray-800 outline-none resize-none placeholder-gray-400"
+            />
+            <div className="text-xs text-gray-400 mt-1">Áp dụng cho mọi cuộc trò chuyện Quick Chat mới</div>
+          </div>
         </section>
 
         <section>
