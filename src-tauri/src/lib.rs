@@ -361,7 +361,7 @@ fn toggle_settings(app_handle: &tauri::AppHandle) {
     }
 
     match WebviewWindowBuilder::new(app_handle, "settings", WebviewUrl::App("index.html?settings=1".into()))
-        .title("Cài đặt - Gemini cho PC")
+        .title("Cài đặt - THADS Đông Hà Nội")
         .inner_size(480.0, 700.0)
         .resizable(false)
         .center()
@@ -474,7 +474,7 @@ fn restore_main_window(app_handle: &tauri::AppHandle) {
     }
 
     match WebviewWindowBuilder::new(app_handle, "main", WebviewUrl::App("index.html".into()))
-        .title("Gemini cho PC - TVT")
+        .title("THADS Đông Hà Nội - Trợ lý AI")
         .inner_size(1280.0, 800.0)
         .maximized(true)
         .build()

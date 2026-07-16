@@ -1,7 +1,7 @@
 [package]
 name = "tauri-app"
 version = "0.1.0"
-description = "Gemini cho PC - TVT: ung dung desktop tich hop Gemini, NotebookLM, Google Docs va AI Studio"
+description = "THADS Dong Ha Noi - Tro ly AI: ung dung desktop tich hop Gemini, NotebookLM, Google Docs va AI Studio"
 authors = ["Thang.TV <trieuvietthang@gmail.com>"]
 license = "UNLICENSED"
 edition = "2021"

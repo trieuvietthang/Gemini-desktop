@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Gemini cho PC - TVT",
+  "productName": "THADS Đông Hà Nội - Trợ lý AI",
   "version": "0.1.0",
   "identifier": "com.gemini.desktop",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Gemini cho PC - TVT",
+        "title": "THADS Đông Hà Nội - Trợ lý AI",
         "width": 1280,
         "height": 800,
         "maximized": true
@@ -37,7 +37,7 @@
       },
       {
         "label": "settings",
-        "title": "Cài đặt - Gemini cho PC",
+        "title": "Cài đặt - THADS Đông Hà Nội",
         "url": "index.html?settings=1",
         "width": 480,
         "height": 700,

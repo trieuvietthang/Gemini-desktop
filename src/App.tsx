@@ -155,12 +155,12 @@ export default function App() {
       >
         {sidebarExpanded ? (
           <div className="flex flex-col items-center gap-2 w-full h-full">
-            <div
-              className="w-10 h-10 rounded-xl bg-justice-blue text-white flex items-center justify-center font-bold shrink-0 mb-2"
-              title="Gemini cho PC - TVT"
-            >
-              T
-            </div>
+            <img
+              src="/logo.png"
+              alt="THADS Đông Hà Nội"
+              title="THADS Đông Hà Nội - Trợ lý AI"
+              className="w-10 h-10 rounded-full object-contain shrink-0 mb-2"
+            />
 
             <div className="flex flex-col gap-2 items-center w-full px-2">
               {TABS.map(tab => (
