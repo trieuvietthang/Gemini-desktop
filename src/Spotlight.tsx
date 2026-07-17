@@ -29,6 +29,14 @@ const QUICK_ACTIONS = [
   { label: "Giải thích", instruction: "Giải thích nội dung sau một cách dễ hiểu:" },
 ];
 
+// Same options as Settings — this dropdown is just a quick-access shortcut
+// to the one shared gemini_model setting, not a separate per-window value.
+const MODELS = [
+  { id: "gemini-flash-latest", label: "Flash" },
+  { id: "gemini-flash-lite-latest", label: "Flash-Lite" },
+  { id: "gemini-pro-latest", label: "Pro" },
+];
+
 export default function Spotlight() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [query, setQuery] = useState("");
@@ -41,9 +49,11 @@ export default function Spotlight() {
   const [isCapturing, setIsCapturing] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [opacity, setOpacity] = useState(0.9);
+  const [model, setModel] = useState("gemini-flash-latest");
   const [showCode, setShowCode] = useState(false);
   const [codeSnippet, setCodeSnippet] = useState("");
   const [codeCopied, setCodeCopied] = useState(false);
+  const [conversationCopied, setConversationCopied] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -55,7 +65,10 @@ export default function Spotlight() {
       .catch(() => setApiKeyConfigured(false));
 
     invoke<AppSettings>("get_settings")
-      .then((s) => setOpacity(s.spotlight_opacity))
+      .then((s) => {
+        setOpacity(s.spotlight_opacity);
+        setModel(s.gemini_model);
+      })
       .catch(() => {});
 
     const win = getCurrentWindow();
@@ -68,6 +81,7 @@ export default function Spotlight() {
 
     const unlistenSettings = listen<AppSettings>("settings-changed", (event) => {
       setOpacity(event.payload.spotlight_opacity);
+      setModel(event.payload.gemini_model);
     });
 
     const unlistenClipboard = listen<string>("clipboard-capture", (event) => {
@@ -199,13 +213,28 @@ export default function Spotlight() {
   // AI Studio has no import API to hand off a live conversation, so the best
   // we can do is put it on the clipboard for the user to paste in themselves,
   // then bring the main window to the AI Studio tab.
-  const openInAiStudio = async () => {
-    if (messages.length > 0) {
-      const text = messages.map((m) => `${m.role === "user" ? "Bạn" : "Gemini"}: ${m.text}`).join("\n\n");
-      await invoke("write_clipboard_text", { text }).catch((err) => console.error("Failed to copy conversation:", err));
+  // AI Studio (and anywhere else) has no import API to hand off a live
+  // conversation, so this just puts a readable transcript on the clipboard
+  // for the user to paste in themselves.
+  const copyConversation = async () => {
+    if (messages.length === 0) return;
+    const text = messages.map((m) => `${m.role === "user" ? "Bạn" : "Gemini"}: ${m.text}`).join("\n\n");
+    try {
+      await invoke("write_clipboard_text", { text });
+      setConversationCopied(true);
+      setTimeout(() => setConversationCopied(false), 1500);
+    } catch (err) {
+      console.error("Failed to copy conversation:", err);
     }
-    await invoke("open_in_ai_studio").catch((err) => console.error("Failed to open AI Studio:", err));
-    getCurrentWindow().hide();
+  };
+
+  const changeModel = async (nextModel: string) => {
+    setModel(nextModel);
+    try {
+      await invoke("set_gemini_model", { model: nextModel });
+    } catch (err) {
+      console.error("Failed to change model:", err);
+    }
   };
 
   // Mirrors exactly what generate_content sends server-side, so it's a
@@ -329,7 +358,17 @@ ${contents || "    // (chưa có tin nhắn nào)"}
                   <div className="text-[10px] text-gray-400">THADS Đông Hà Nội</div>
                 </div>
               </div>
-              <div className="flex items-center gap-0.5">
+              <div className="flex items-center gap-1">
+                <select
+                  value={model}
+                  onChange={(e) => changeModel(e.target.value)}
+                  title="Model Gemini — áp dụng cho mọi tính năng dùng API, không riêng Quick Chat"
+                  className="text-xs font-medium px-2 py-1 rounded-lg bg-gray-100 text-gray-600 outline-none cursor-pointer hover:bg-gray-200 transition-colors"
+                >
+                  {MODELS.map((m) => (
+                    <option key={m.id} value={m.id}>{m.label}</option>
+                  ))}
+                </select>
                 <button
                   type="button"
                   onClick={openGetCode}
@@ -340,11 +379,12 @@ ${contents || "    // (chưa có tin nhắn nào)"}
                 </button>
                 <button
                   type="button"
-                  onClick={openInAiStudio}
-                  title="Mở trong AI Studio (sao chép hội thoại vào clipboard)"
-                  className="text-gray-400 hover:text-gray-600 cursor-pointer p-1.5 rounded-lg hover:bg-gray-100 text-sm"
+                  onClick={copyConversation}
+                  disabled={messages.length === 0}
+                  title="Sao chép hội thoại (để dán sang AI Studio hoặc nơi khác)"
+                  className="text-gray-400 hover:text-gray-600 cursor-pointer p-1.5 rounded-lg hover:bg-gray-100 text-sm disabled:opacity-40 disabled:cursor-default"
                 >
-                  🧪
+                  {conversationCopied ? "✅" : "📋"}
                 </button>
                 <button
                   type="button"

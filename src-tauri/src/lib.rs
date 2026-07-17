@@ -145,7 +145,13 @@ fn set_spotlight_opacity(app: tauri::AppHandle, opacity: f32) -> Result<(), Stri
 fn set_gemini_model(app: tauri::AppHandle, model: String) -> Result<(), String> {
     let mut settings = load_settings(&app);
     settings.gemini_model = model;
-    save_settings(&app, &settings)
+    save_settings(&app, &settings)?;
+    // Quick Chat has its own model shortcut in the header; if Settings changes
+    // it too while Quick Chat is open, keep them in sync.
+    if let Some(spotlight) = app.get_webview_window("spotlight") {
+        let _ = spotlight.emit("settings-changed", &settings);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -261,19 +267,6 @@ fn read_clipboard_text() -> Result<String, String> {
 fn write_clipboard_text(text: String) -> Result<(), String> {
     let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
     clipboard.set_text(text).map_err(|e| e.to_string())
-}
-
-// Quick Chat's "Mở trong AI Studio" button: bring the main window to front
-// and switch it to the AI Studio tab. There's no way to hand off the actual
-// conversation to AI Studio's own session (different product, no import
-// API), so the caller copies the conversation to the clipboard first and the
-// user pastes it in themselves.
-#[tauri::command]
-fn open_in_ai_studio(app: tauri::AppHandle) {
-    with_main_window(&app, |window| {
-        let result = window.emit_to("main", "switch-tab", "aistudio");
-        eprintln!("open_in_ai_studio: emit switch-tab -> {:?}", result);
-    });
 }
 
 fn guess_mime_type(path: &str) -> &'static str {
@@ -647,7 +640,6 @@ pub fn run() {
             hide_help_window,
             read_clipboard_text,
             write_clipboard_text,
-            open_in_ai_studio,
             read_file_as_attachment,
             get_settings,
             update_shortcut,
