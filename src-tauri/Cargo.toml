@@ -1,6 +1,6 @@
 [package]
 name = "tauri-app"
-version = "0.1.0"
+version = "1.0.0"
 description = "THADS Dong Ha Noi - Tro ly AI: ung dung desktop tich hop Gemini, NotebookLM, Google Docs va AI Studio"
 authors = ["Thang.TV <trieuvietthang@gmail.com>"]
 license = "UNLICENSED"

@@ -404,7 +404,7 @@ export default function Settings() {
               <img src="/logo-small.png" alt="THADS Đông Hà Nội" className="w-12 h-12 rounded-full object-contain shrink-0" />
               <div>
                 <div className="font-medium text-gray-800">THADS Đông Hà Nội - Trợ lý AI</div>
-                <div className="text-xs text-gray-400">Phiên bản 0.1.0</div>
+                <div className="text-xs text-gray-400">Phiên bản 1.0.0</div>
               </div>
             </div>
             <div className="text-xs text-gray-400 pt-1">

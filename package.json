@@ -1,7 +1,7 @@
 {
   "name": "gemini-cho-pc-tvt",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "THADS Đông Hà Nội - Trợ lý AI: ứng dụng desktop tích hợp Gemini, NotebookLM, Google Docs và AI Studio",
   "author": "Thang.TV <trieuvietthang@gmail.com>",
   "license": "UNLICENSED",
