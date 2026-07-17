@@ -3,12 +3,16 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Webview } from "@tauri-apps/api/webview";
 import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi";
 import { invoke } from "@tauri-apps/api/core";
+import ImageStudio from "./ImageStudio";
 
 interface Tab {
   id: string;
   name: string;
   url: string;
   icon: string;
+  // Internal tabs render a React component in the content area instead of
+  // embedding an external website in a native webview.
+  internal?: boolean;
 }
 
 const TABS: Tab[] = [
@@ -16,6 +20,7 @@ const TABS: Tab[] = [
   { id: "notebook", name: "Sổ ghi chú", url: "https://notebooklm.google.com/", icon: "📓" },
   { id: "docs", name: "Google Docs", url: "https://docs.google.com/document/u/0/", icon: "📄" },
   { id: "aistudio", name: "AI Studio", url: "https://aistudio.google.com/", icon: "🧪" },
+  { id: "imagestudio", name: "Tạo ảnh ghép", url: "", icon: "🎨", internal: true },
 ];
 
 const EXPANDED_WIDTH = 72;
@@ -49,10 +54,14 @@ export default function App() {
   // rail would just get hidden behind whichever tab is showing.
   const layout = (currentActiveId: string) => {
     const { width, height } = contentSize();
+    // Internal tabs (e.g. Image Studio) render React content, not a webview —
+    // every webview goes offscreen so none of them can cover it.
+    const activeTab = TABS.find(t => t.id === currentActiveId);
+    const onscreenId = activeTab?.internal ? null : currentActiveId;
     for (const id in webviewsRef.current) {
       const wv = webviewsRef.current[id];
       wv.setSize(new LogicalSize(width, height));
-      wv.setPosition(new LogicalPosition(id === currentActiveId ? sidebarWidth : OFFSCREEN_X, 0));
+      wv.setPosition(new LogicalPosition(id === onscreenId ? sidebarWidth : OFFSCREEN_X, 0));
     }
   };
 
@@ -94,7 +103,7 @@ export default function App() {
     const tab = TABS.find(t => t.id === activeTabId);
     if (!tab) return;
 
-    ensureWebview(tab);
+    if (!tab.internal) ensureWebview(tab);
     layout(activeTabId);
 
     const handleResize = () => layout(activeTabId);
@@ -135,6 +144,8 @@ export default function App() {
   const openHelp = () => {
     invoke("toggle_help_window").catch(err => console.error("Failed to open Help:", err));
   };
+
+  const activeTab = TABS.find(t => t.id === activeTabId);
 
   return (
     <div className="flex h-screen bg-transparent overflow-hidden relative">
@@ -201,11 +212,15 @@ export default function App() {
         )}
       </div>
 
-      {/* Main Content Area (Webview goes here) */}
+      {/* Main Content Area (Webview goes here, or an internal tab's own React content) */}
       <div className="flex-1 bg-transparent relative">
-        <div className="absolute inset-0 flex items-center justify-center">
-           <p className="text-gray-400 font-medium">Đang tải...</p>
-        </div>
+        {activeTab?.internal ? (
+          <ImageStudio />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <p className="text-gray-400 font-medium">Đang tải...</p>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -11,6 +11,8 @@ use std::fs;
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
+mod image_studio;
+
 #[derive(Serialize, Deserialize, Default)]
 struct Secrets {
     gemini_api_key: Option<String>,
@@ -25,7 +27,7 @@ fn secrets_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 // Env var takes precedence (useful for managed/deployed machines); otherwise fall back
 // to the per-user secrets file written via `set_gemini_api_key`. The key never lives in
 // source control or the shipped JS bundle.
-fn load_api_key(app: &tauri::AppHandle) -> Option<String> {
+pub(crate) fn load_api_key(app: &tauri::AppHandle) -> Option<String> {
     if let Ok(key) = std::env::var("GEMINI_API_KEY") {
         if !key.trim().is_empty() {
             return Some(key);
@@ -64,6 +66,7 @@ const DEFAULT_CLIPBOARD_SHORTCUT: &str = "Ctrl+Alt+C";
 const DEFAULT_SPOTLIGHT_OPACITY: f32 = 0.9;
 const DEFAULT_GEMINI_MODEL: &str = "gemini-flash-latest";
 const DEFAULT_TEMPERATURE: f32 = 1.0;
+pub(crate) const DEFAULT_IMAGE_MODEL: &str = "gemini-3-pro-image-preview";
 
 fn default_spotlight_opacity() -> f32 {
     DEFAULT_SPOTLIGHT_OPACITY
@@ -73,6 +76,9 @@ fn default_gemini_model() -> String {
 }
 fn default_temperature() -> f32 {
     DEFAULT_TEMPERATURE
+}
+fn default_image_model() -> String {
+    DEFAULT_IMAGE_MODEL.to_string()
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -89,6 +95,14 @@ struct AppSettings {
     gemini_temperature: f32,
     #[serde(default)]
     system_instruction: String,
+    // Image compositing tab settings — kept separate from the chat model so
+    // the two can be picked independently.
+    #[serde(default = "default_image_model")]
+    pub(crate) image_model: String,
+    // Persistent addendum appended to the (locked) optimized composite prompt
+    // on every generation, on top of any per-generation instructions.
+    #[serde(default)]
+    pub(crate) image_extra_instruction: String,
 }
 
 impl Default for AppSettings {
@@ -100,6 +114,8 @@ impl Default for AppSettings {
             gemini_model: DEFAULT_GEMINI_MODEL.to_string(),
             gemini_temperature: DEFAULT_TEMPERATURE,
             system_instruction: String::new(),
+            image_model: DEFAULT_IMAGE_MODEL.to_string(),
+            image_extra_instruction: String::new(),
         }
     }
 }
@@ -110,7 +126,7 @@ fn settings_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(dir.join("settings.json"))
 }
 
-fn load_settings(app: &tauri::AppHandle) -> AppSettings {
+pub(crate) fn load_settings(app: &tauri::AppHandle) -> AppSettings {
     settings_path(app)
         .ok()
         .and_then(|path| fs::read_to_string(path).ok())
@@ -169,6 +185,22 @@ fn set_system_instruction(app: tauri::AppHandle, instruction: String) -> Result<
 }
 
 #[tauri::command]
+fn set_image_model(app: tauri::AppHandle, model: String) -> Result<(), String> {
+    let mut settings = load_settings(&app);
+    // An empty value falls back to the default at generation time, so storing
+    // it as-is is fine.
+    settings.image_model = model;
+    save_settings(&app, &settings)
+}
+
+#[tauri::command]
+fn set_image_extra_instruction(app: tauri::AppHandle, instruction: String) -> Result<(), String> {
+    let mut settings = load_settings(&app);
+    settings.image_extra_instruction = instruction;
+    save_settings(&app, &settings)
+}
+
+#[tauri::command]
 fn get_autostart_enabled(app: tauri::AppHandle) -> bool {
     use tauri_plugin_autostart::ManagerExt;
     app.autolaunch().is_enabled().unwrap_or(false)
@@ -183,10 +215,10 @@ fn set_autostart_enabled(app: tauri::AppHandle, enabled: bool) -> Result<(), Str
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-struct Attachment {
-    mime_type: String,
+pub(crate) struct Attachment {
+    pub(crate) mime_type: String,
     /// Raw base64 (no `data:...;base64,` prefix).
-    data: String,
+    pub(crate) data: String,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -554,6 +586,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
@@ -647,8 +680,14 @@ pub fn run() {
             set_gemini_model,
             set_gemini_temperature,
             set_system_instruction,
+            set_image_model,
+            set_image_extra_instruction,
             get_autostart_enabled,
-            set_autostart_enabled
+            set_autostart_enabled,
+            image_studio::generate_composite_image,
+            image_studio::list_image_history,
+            image_studio::delete_image_history_entry,
+            image_studio::save_image_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

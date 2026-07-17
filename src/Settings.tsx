@@ -8,6 +8,8 @@ interface AppSettings {
   gemini_model: string;
   gemini_temperature: number;
   system_instruction: string;
+  image_model: string;
+  image_extra_instruction: string;
 }
 
 type ShortcutSlot = "spotlight" | "clipboard";
@@ -16,6 +18,15 @@ const MODELS = [
   { id: "gemini-flash-latest", label: "Gemini Flash — nhanh, cân bằng (khuyến nghị)" },
   { id: "gemini-flash-lite-latest", label: "Gemini Flash-Lite — nhẹ nhất, nhanh nhất" },
   { id: "gemini-pro-latest", label: "Gemini Pro — mạnh nhất, chậm hơn" },
+];
+
+// Image generation models available on Google AI Studio (Nano Banana family).
+// The custom text field below the dropdown covers models Google adds later.
+const IMAGE_MODELS = [
+  { id: "gemini-3-pro-image-preview", label: "Nano Banana Pro — chất lượng & độ giống cao nhất (khuyến nghị)" },
+  { id: "gemini-3.1-flash-image", label: "Nano Banana 2 — nhanh/rẻ hơn, chất lượng khá" },
+  { id: "gemini-3.1-flash-lite-image", label: "Nano Banana 2 Lite — nhẹ nhất, chỉ 1K" },
+  { id: "gemini-2.5-flash-image", label: "Nano Banana — bản cũ" },
 ];
 
 const IGNORED_KEYS = new Set(["Control", "Alt", "Shift", "Meta"]);
@@ -48,6 +59,7 @@ export default function Settings() {
   const [error, setError] = useState<string | null>(null);
   const [confirmClearKey, setConfirmClearKey] = useState(false);
   const [systemInstructionDraft, setSystemInstructionDraft] = useState("");
+  const [imageInstructionDraft, setImageInstructionDraft] = useState("");
   const capturingRef = useRef<ShortcutSlot | null>(null);
 
   const refresh = () => {
@@ -55,6 +67,7 @@ export default function Settings() {
       .then((s) => {
         setSettings(s);
         setSystemInstructionDraft(s.system_instruction);
+        setImageInstructionDraft(s.image_extra_instruction);
       })
       .catch(console.error);
     invoke<boolean>("get_autostart_enabled").then(setAutostart).catch(console.error);
@@ -132,6 +145,24 @@ export default function Settings() {
     setSettings(prev => (prev ? { ...prev, system_instruction: systemInstructionDraft } : prev));
     try {
       await invoke("set_system_instruction", { instruction: systemInstructionDraft });
+    } catch (err) {
+      setError(typeof err === "string" ? err : String(err));
+    }
+  };
+
+  const changeImageModel = async (model: string) => {
+    setSettings(prev => (prev ? { ...prev, image_model: model } : prev));
+    try {
+      await invoke("set_image_model", { model });
+    } catch (err) {
+      setError(typeof err === "string" ? err : String(err));
+    }
+  };
+
+  const saveImageInstruction = async () => {
+    setSettings(prev => (prev ? { ...prev, image_extra_instruction: imageInstructionDraft } : prev));
+    try {
+      await invoke("set_image_extra_instruction", { instruction: imageInstructionDraft });
     } catch (err) {
       setError(typeof err === "string" ? err : String(err));
     }
@@ -237,6 +268,50 @@ export default function Settings() {
               className="w-full text-sm px-3 py-2 rounded-lg bg-gray-100 text-gray-800 outline-none resize-none placeholder-gray-400"
             />
             <div className="text-xs text-gray-400 mt-1">Áp dụng cho mọi cuộc trò chuyện Quick Chat mới</div>
+          </div>
+        </section>
+
+        <section>
+          <h2 className="text-xs font-bold uppercase text-gray-400 mb-1">Tạo ảnh ghép</h2>
+          <div className="py-2">
+            <div className="text-sm font-medium text-gray-800 mb-1.5">Mô hình tạo ảnh</div>
+            <select
+              value={IMAGE_MODELS.some((m) => m.id === settings?.image_model) ? settings?.image_model : "__custom__"}
+              onChange={(e) => {
+                if (e.target.value !== "__custom__") changeImageModel(e.target.value);
+              }}
+              className="w-full text-sm px-3 py-2 rounded-lg bg-gray-100 text-gray-800 outline-none cursor-pointer"
+            >
+              {IMAGE_MODELS.map((m) => (
+                <option key={m.id} value={m.id}>{m.label}</option>
+              ))}
+              <option value="__custom__">— Tùy chỉnh (nhập ID bên dưới) —</option>
+            </select>
+            <input
+              type="text"
+              value={settings?.image_model ?? ""}
+              onChange={(e) => setSettings((prev) => (prev ? { ...prev, image_model: e.target.value } : prev))}
+              onBlur={(e) => invoke("set_image_model", { model: e.target.value }).catch((err) => setError(typeof err === "string" ? err : String(err)))}
+              placeholder="Hoặc nhập ID model tùy chỉnh..."
+              className="w-full text-sm px-3 py-2 mt-2 rounded-lg bg-gray-100 text-gray-800 outline-none font-mono"
+            />
+            <div className="text-xs text-gray-400 mt-1">
+              Nano Banana Pro giữ khuôn mặt giống nhất. Đổi sang model Flash/Lite sẽ nhanh/rẻ hơn nhưng giảm độ giống.
+            </div>
+          </div>
+          <div className="py-2">
+            <div className="text-sm font-medium text-gray-800 mb-1.5">Chỉ dẫn bổ sung cố định</div>
+            <textarea
+              value={imageInstructionDraft}
+              onChange={(e) => setImageInstructionDraft(e.target.value)}
+              onBlur={saveImageInstruction}
+              placeholder="Ví dụ: Luôn giữ tông màu ấm, ưu tiên đặt người được ghép ở hàng sau."
+              rows={3}
+              className="w-full text-sm px-3 py-2 rounded-lg bg-gray-100 text-gray-800 outline-none resize-none placeholder-gray-400"
+            />
+            <div className="text-xs text-gray-400 mt-1">
+              Được nối thêm vào mọi lần tạo ảnh. Không thay thế bộ hướng dẫn chuẩn (đã tối ưu) — chỉ bổ sung.
+            </div>
           </div>
         </section>
 
