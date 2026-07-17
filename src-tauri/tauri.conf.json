@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "THADS Đông Hà Nội - Trợ lý AI",
+  "productName": "THADS Dong Ha Noi - Tro ly AI",
   "version": "0.1.0",
   "identifier": "com.gemini.desktop",
   "build": {
@@ -62,8 +62,8 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "publisher": "Văn phòng Thi hành án dân sự Đông Hà Nội",
-    "copyright": "Copyright © 2026 Văn phòng Thi hành án dân sự Đông Hà Nội. All rights reserved.",
+    "publisher": "Van phong Thi hanh an dan su Dong Ha Noi",
+    "copyright": "Copyright 2026 Van phong Thi hanh an dan su Dong Ha Noi. All rights reserved.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
