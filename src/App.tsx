@@ -4,6 +4,7 @@ import { Webview } from "@tauri-apps/api/webview";
 import { LogicalPosition, LogicalSize } from "@tauri-apps/api/dpi";
 import { invoke } from "@tauri-apps/api/core";
 import ImageStudio from "./ImageStudio";
+import IdPhotoStudio from "./IdPhotoStudio";
 
 interface Tab {
   id: string;
@@ -21,6 +22,7 @@ const TABS: Tab[] = [
   { id: "docs", name: "Google Docs", url: "https://docs.google.com/document/u/0/", icon: "📄" },
   { id: "aistudio", name: "AI Studio", url: "https://aistudio.google.com/", icon: "🧪" },
   { id: "imagestudio", name: "Tạo ảnh ghép", url: "", icon: "🎨", internal: true },
+  { id: "idphoto", name: "Ảnh thẻ", url: "", icon: "🆔", internal: true },
 ];
 
 const EXPANDED_WIDTH = 72;
@@ -145,8 +147,6 @@ export default function App() {
     invoke("toggle_help_window").catch(err => console.error("Failed to open Help:", err));
   };
 
-  const activeTab = TABS.find(t => t.id === activeTabId);
-
   return (
     <div className="flex h-screen bg-transparent overflow-hidden relative">
       <div
@@ -214,8 +214,10 @@ export default function App() {
 
       {/* Main Content Area (Webview goes here, or an internal tab's own React content) */}
       <div className="flex-1 bg-transparent relative">
-        {activeTab?.internal ? (
+        {activeTabId === "imagestudio" ? (
           <ImageStudio />
+        ) : activeTabId === "idphoto" ? (
+          <IdPhotoStudio />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center">
             <p className="text-gray-400 font-medium">Đang tải...</p>

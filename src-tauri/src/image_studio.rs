@@ -1,7 +1,9 @@
+use crate::gemini_client::request_one_image;
 use crate::{load_api_key, Attachment};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use tauri::Emitter;
 
 // Embeds the full "realistic composite" checklist so every generation is held
 // to the same bar regardless of what the user types in "extra instructions".
@@ -142,60 +144,6 @@ fn persist_history_entry(
     })
 }
 
-// One API call: sends the prepared body and returns (mime_type, base64 data)
-// of the first image part, or a human-readable error.
-async fn request_one_image(
-    client: &reqwest::Client,
-    url: &str,
-    api_key: &str,
-    body: &serde_json::Value,
-) -> Result<(String, String), String> {
-    let res = client
-        .post(url)
-        .header("X-goog-api-key", api_key)
-        .json(body)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let status = res.status();
-    let resp_body: serde_json::Value = res.json().await.map_err(|e| e.to_string())?;
-
-    if !status.is_success() {
-        let msg = resp_body["error"]["message"]
-            .as_str()
-            .unwrap_or("Unknown error");
-        return Err(msg.to_string());
-    }
-
-    let response_parts = resp_body["candidates"][0]["content"]["parts"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
-
-    // Google's REST responses use camelCase (`inlineData`/`mimeType`) even
-    // though snake_case is also accepted on the way in.
-    for part in &response_parts {
-        let inline = part.get("inlineData").or_else(|| part.get("inline_data"));
-        if let Some(inline) = inline {
-            let mime_type = inline["mimeType"]
-                .as_str()
-                .or_else(|| inline["mime_type"].as_str())
-                .unwrap_or("image/png")
-                .to_string();
-            if let Some(data) = inline["data"].as_str() {
-                return Ok((mime_type, data.to_string()));
-            }
-        }
-    }
-
-    let text_fallback = response_parts
-        .iter()
-        .find_map(|p| p["text"].as_str())
-        .unwrap_or("Model không trả về ảnh nào.");
-    Err(text_fallback.to_string())
-}
-
 #[tauri::command]
 pub async fn generate_composite_image(
     app: tauri::AppHandle,
@@ -289,7 +237,7 @@ pub async fn generate_composite_image(
     let client = reqwest::Client::new();
     let mut entries = Vec::new();
     let mut last_error: Option<String> = None;
-    for _ in 0..variant_count {
+    for i in 0..variant_count {
         match request_one_image(&client, &url, &api_key, &body).await {
             Ok((mime_type, data)) => {
                 let entry = persist_history_entry(
@@ -304,6 +252,13 @@ pub async fn generate_composite_image(
             }
             Err(e) => last_error = Some(e),
         }
+        // Lets the frontend show "Đang tạo ảnh x/y..." instead of one opaque
+        // spinner for the whole batch — best-effort, a missed event just
+        // means the progress text doesn't update for that step.
+        let _ = app.emit(
+            "image_studio_progress",
+            serde_json::json!({ "done": i + 1, "total": variant_count }),
+        );
     }
 
     if entries.is_empty() {

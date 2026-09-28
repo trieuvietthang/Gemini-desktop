@@ -1,12 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-
-interface UploadedImage {
-  mimeType: string;
-  data: string; // base64, no data-url prefix
-  name: string;
-}
+import { listen } from "@tauri-apps/api/event";
+import {
+  fileToUploadedImage,
+  convertToJpeg,
+  analyzePortraitQuality,
+  RESOLUTIONS,
+  type UploadedImage,
+  type Resolution,
+} from "./lib/imageUtils";
+import { UploadZone, MultiUploadZone } from "./components/UploadZone";
 
 // Mirrors src-tauri/src/image_studio.rs::HistoryEntry (plain snake_case —
 // Tauri only camelCases top-level command *argument* names, not struct fields).
@@ -19,161 +23,10 @@ interface HistoryEntry {
   aspect_ratio: string;
 }
 
-type Resolution = "1K" | "2K" | "4K";
 type Format = "PNG" | "JPG";
 
-const RESOLUTIONS: Resolution[] = ["1K", "2K", "4K"];
 const FORMATS: Format[] = ["PNG", "JPG"];
 const ASPECT_RATIOS = ["auto", "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"];
-
-function fileToUploadedImage(file: File): Promise<UploadedImage> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      const data = result.split(",")[1] ?? "";
-      resolve({ mimeType: file.type || "image/png", data, name: file.name });
-    };
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
-
-// JPEG has no alpha channel, so a white backdrop is painted first —
-// otherwise transparent areas of a PNG would turn black on conversion.
-function convertToJpeg(dataUrl: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        reject(new Error("Canvas not supported"));
-        return;
-      }
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0);
-      resolve(canvas.toDataURL("image/jpeg", 0.92));
-    };
-    img.onerror = reject;
-    img.src = dataUrl;
-  });
-}
-
-function UploadZone({
-  label,
-  hint,
-  image,
-  onPick,
-  onClear,
-}: {
-  label: string;
-  hint: string;
-  image: UploadedImage | null;
-  onPick: (file: File) => void;
-  onClear: () => void;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  return (
-    <div>
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) onPick(file);
-          e.target.value = "";
-        }}
-      />
-      {image ? (
-        <div className="relative rounded-xl border border-gray-200 overflow-hidden group">
-          <img
-            src={`data:${image.mimeType};base64,${image.data}`}
-            alt={label}
-            className="w-full h-28 object-cover"
-          />
-          <button
-            type="button"
-            onClick={onClear}
-            title="Xoá ảnh"
-            className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-          >
-            ✕
-          </button>
-          <div className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-[10px] px-2 py-1 truncate">
-            {image.name}
-          </div>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          className="w-full h-28 rounded-xl border-2 border-dashed border-gray-200 hover:border-justice-blue hover:bg-justice-blue/5 transition-colors flex flex-col items-center justify-center gap-1 cursor-pointer"
-        >
-          <span className="w-7 h-7 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center text-base">+</span>
-          <span className="text-xs font-medium text-gray-600">{label}</span>
-          <span className="text-[10px] text-gray-400">{hint}</span>
-        </button>
-      )}
-    </div>
-  );
-}
-
-// Portrait uploader that accepts several photos of the same person (different
-// angles/expressions) to sharpen face fidelity.
-function MultiUploadZone({
-  images,
-  onAddFiles,
-  onRemove,
-}: {
-  images: UploadedImage[];
-  onAddFiles: (files: FileList) => void;
-  onRemove: (index: number) => void;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  return (
-    <div className="grid grid-cols-3 gap-2">
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        multiple
-        className="hidden"
-        onChange={(e) => {
-          if (e.target.files && e.target.files.length > 0) onAddFiles(e.target.files);
-          e.target.value = "";
-        }}
-      />
-      {images.map((img, i) => (
-        <div key={i} className="relative rounded-lg border border-gray-200 overflow-hidden group aspect-square">
-          <img src={`data:${img.mimeType};base64,${img.data}`} alt="" className="w-full h-full object-cover" />
-          <button
-            type="button"
-            onClick={() => onRemove(i)}
-            title="Xoá ảnh"
-            className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/60 text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-          >
-            ✕
-          </button>
-        </div>
-      ))}
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
-        className="aspect-square rounded-lg border-2 border-dashed border-gray-200 hover:border-justice-blue hover:bg-justice-blue/5 transition-colors flex flex-col items-center justify-center gap-0.5 cursor-pointer"
-      >
-        <span className="w-6 h-6 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center text-base">+</span>
-        <span className="text-[10px] text-gray-500">Thêm ảnh</span>
-      </button>
-    </div>
-  );
-}
 
 export default function ImageStudio() {
   const [apiKeyConfigured, setApiKeyConfigured] = useState<boolean | null>(null);
@@ -195,6 +48,8 @@ export default function ImageStudio() {
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
+  const [genProgress, setGenProgress] = useState<{ done: number; total: number } | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
     invoke<boolean>("has_gemini_api_key").then(setApiKeyConfigured).catch(() => setApiKeyConfigured(false));
@@ -236,6 +91,10 @@ export default function ImageStudio() {
     if (!background || persons.length === 0 || isGenerating) return;
     setIsGenerating(true);
     setError(null);
+    setGenProgress(null);
+    const unlisten = await listen<{ done: number; total: number }>("image_studio_progress", (e) =>
+      setGenProgress(e.payload),
+    );
     try {
       const entries = await invoke<HistoryEntry[]>("generate_composite_image", {
         background: { mime_type: background.mimeType, data: background.data },
@@ -252,6 +111,8 @@ export default function ImageStudio() {
     } catch (err: any) {
       setError(typeof err === "string" ? err : err?.message ?? "Đã có lỗi xảy ra");
     } finally {
+      unlisten();
+      setGenProgress(null);
       setIsGenerating(false);
     }
   };
@@ -296,7 +157,13 @@ export default function ImageStudio() {
   };
 
   const addPortraitFiles = (files: FileList) => {
-    Promise.all(Array.from(files).map(fileToUploadedImage))
+    Promise.all(
+      Array.from(files).map(async (file) => {
+        const img = await fileToUploadedImage(file);
+        const warnings = await analyzePortraitQuality(`data:${img.mimeType};base64,${img.data}`);
+        return { ...img, warnings };
+      }),
+    )
       .then((imgs) => setPersons((prev) => [...prev, ...imgs]))
       .catch((err) => console.error("Failed to read portrait files:", err));
   };
@@ -467,21 +334,48 @@ export default function ImageStudio() {
             <div className="grid grid-cols-4 gap-1.5">
               {history.map((h) => (
                 <div key={h.id} className="relative group">
-                  <button
-                    type="button"
-                    onClick={() => setResult(h)}
-                    className="w-full aspect-square rounded-lg overflow-hidden border border-gray-200 cursor-pointer"
-                  >
-                    <img src={`data:${h.mime_type};base64,${h.data}`} alt="" className="w-full h-full object-cover" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteHistory(h.id)}
-                    title="Xoá"
-                    className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-black/70 text-white text-[9px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                  >
-                    ✕
-                  </button>
+                  {confirmDeleteId === h.id ? (
+                    <div className="w-full aspect-square rounded-lg bg-black/80 flex flex-col items-center justify-center gap-1 text-white text-[9px] px-1 text-center">
+                      <span>Xoá ảnh này?</span>
+                      <div className="flex gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleDeleteHistory(h.id);
+                            setConfirmDeleteId(null);
+                          }}
+                          className="px-1.5 py-0.5 rounded bg-authority-red font-bold cursor-pointer"
+                        >
+                          Xoá
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(null)}
+                          className="px-1.5 py-0.5 rounded bg-white/20 font-bold cursor-pointer"
+                        >
+                          Huỷ
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setResult(h)}
+                        className="w-full aspect-square rounded-lg overflow-hidden border border-gray-200 cursor-pointer"
+                      >
+                        <img src={`data:${h.mime_type};base64,${h.data}`} alt="" className="w-full h-full object-cover" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteId(h.id)}
+                        title="Xoá"
+                        className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-black/70 text-white text-[9px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
@@ -496,7 +390,9 @@ export default function ImageStudio() {
             <div className="text-3xl mb-2 animate-pulse">✨</div>
             <p className="text-sm text-gray-500">
               {variantCount > 1
-                ? `Đang tạo ${variantCount} ảnh, có thể mất vài phút...`
+                ? genProgress
+                  ? `Đang tạo ảnh ${genProgress.done}/${genProgress.total}...`
+                  : `Đang tạo ${variantCount} ảnh, có thể mất vài phút...`
                 : "Đang ghép ảnh, có thể mất khoảng một phút..."}
             </p>
           </div>
@@ -507,6 +403,19 @@ export default function ImageStudio() {
           </div>
         ) : result ? (
           <div className="max-w-full max-h-full flex flex-col items-center gap-3">
+            {persons[0] && (
+              <div className="flex items-center gap-2">
+                <div className="flex flex-col items-center gap-1">
+                  <img
+                    src={`data:${persons[0].mimeType};base64,${persons[0].data}`}
+                    alt="Ảnh gốc"
+                    className="w-14 h-14 rounded-lg object-cover border border-gray-200"
+                  />
+                  <span className="text-[10px] text-gray-400">Ảnh gốc</span>
+                </div>
+                <span className="text-gray-300">→</span>
+              </div>
+            )}
             <img
               src={`data:${result.mime_type};base64,${result.data}`}
               alt="Kết quả"

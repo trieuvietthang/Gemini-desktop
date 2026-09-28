@@ -11,6 +11,8 @@ use std::fs;
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
+mod gemini_client;
+mod id_photo;
 mod image_studio;
 
 #[derive(Serialize, Deserialize, Default)]
@@ -687,7 +689,10 @@ pub fn run() {
             image_studio::generate_composite_image,
             image_studio::list_image_history,
             image_studio::delete_image_history_entry,
-            image_studio::save_image_file
+            image_studio::save_image_file,
+            id_photo::generate_id_photo,
+            id_photo::list_id_photo_history,
+            id_photo::delete_id_photo_history_entry
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
